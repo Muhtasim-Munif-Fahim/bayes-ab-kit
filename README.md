@@ -1,4 +1,4 @@
-﻿# bayes-ab-kit
+# bayes-ab-kit
 
 Bayesian A/B testing and experiment analysis toolkit for conversion metrics,
 revenue metrics, and sequential decision-making.

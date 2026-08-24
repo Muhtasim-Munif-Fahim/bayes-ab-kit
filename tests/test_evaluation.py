@@ -96,3 +96,24 @@ def test_nonpositive_sample_count_rejected():
     b = make_variant("B", 12, 200, seed=2)
     with pytest.raises(ValueError):
         evaluate_variants(a, b, n_samples=0)
+def test_zero_conversion_variant_with_orders_is_valid_but_rare():
+    v = VariantData(
+        name="A",
+        conversions=0,
+        trials=200,
+        order_values=np.array([5.0]),
+    )
+    draws = arpu_draws(v, np.random.default_rng(1), n_samples=1000)
+    assert draws.mean() < 0.15
+
+
+def test_single_order_value_supported_end_to_end():
+    a = make_variant("A", 80, 1000, seed=51)
+    b = VariantData("B", 90, 1000, order_values=np.full(3, 42.0))
+    result = evaluate_variants(a, b, n_samples=5000, sigma_log=0.6)
+    assert result.summary_b.lower >= 0
+def test_zero_spread_orders_surface_clear_error_without_sigma():
+    a = make_variant("A", 80, 1000, seed=52)
+    b = VariantData("B", 90, 1000, order_values=np.full(4, 30.0))
+    with pytest.raises(ValueError, match="no dispersion"):
+        evaluate_variants(a, b, n_samples=2000)

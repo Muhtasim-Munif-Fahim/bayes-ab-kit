@@ -118,7 +118,16 @@ class LognormalRevenueModel:
             raise ValueError("lognormal model requires strictly positive values")
         logs = np.log(arr)
         if sigma_log is None:
-            sigma_log = float(np.std(logs, ddof=1)) if arr.size > 1 else 1.0
+            if arr.size == 1:
+                sigma_log = 1.0
+            else:
+                spread = float(np.std(logs, ddof=1))
+                if spread <= 0:
+                    raise ValueError(
+                        "order values show no dispersion on the log scale; "
+                        "pass sigma_log explicitly"
+                    )
+                sigma_log = spread
         mu_model = NormalRevenueModel.from_samples(
             logs, known_sigma=sigma_log, mu0=mu0, tau0=tau0
         )

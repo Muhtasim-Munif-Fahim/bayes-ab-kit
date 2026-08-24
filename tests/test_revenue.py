@@ -89,3 +89,14 @@ def test_lognormal_mu_interval_contains_posterior_mean_of_logs():
     model = LognormalRevenueModel.from_revenues(values)
     lower, upper = model.credible_interval_for_mu()
     assert lower < model.mu_posterior.mean() < upper
+def test_single_value_falls_back_to_default_dispersion():
+    model = LognormalRevenueModel.from_revenues([25.0])
+    assert model.n == 1
+    assert model.sigma_log == pytest.approx(1.0)
+
+
+def test_zero_spread_orders_require_explicit_sigma():
+    with pytest.raises(ValueError, match="no dispersion"):
+        LognormalRevenueModel.from_revenues([7.0, 7.0, 7.0])
+    ok = LognormalRevenueModel.from_revenues([7.0, 7.0, 7.0], sigma_log=0.5)
+    assert ok.sigma_log == pytest.approx(0.5)

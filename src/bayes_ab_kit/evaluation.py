@@ -57,6 +57,7 @@ def arpu_draws(
     variant: VariantData,
     rng: np.random.Generator,
     n_samples: int,
+    sigma_log: float | None = None,
 ) -> np.ndarray:
     """Monte Carlo draws of revenue per visitor for one variant."""
     if n_samples <= 0:
@@ -66,7 +67,9 @@ def arpu_draws(
     rate_draws = BetaBinomialPosterior.from_counts(
         variant.conversions, variant.trials
     ).sample(rng, size=n_samples)
-    revenue_model = LognormalRevenueModel.from_revenues(variant.order_values)
+    revenue_model = LognormalRevenueModel.from_revenues(
+        variant.order_values, sigma_log=sigma_log
+    )
     value_draws = revenue_model.expected_value_draws(rng, size=n_samples)
     return rate_draws * value_draws
 
@@ -77,14 +80,15 @@ def evaluate_variants(
     ci: float = 0.95,
     n_samples: int = 50_000,
     seed: int | None = 20260824,
+    sigma_log: float | None = None,
 ) -> ArpuEvaluation:
     """Compare two variants on expected revenue per visitor."""
     _validate_ci(ci)
     if n_samples <= 0:
         raise ValueError("n_samples must be positive")
     rng = np.random.default_rng(seed)
-    draws_a = arpu_draws(variant_a, rng, n_samples)
-    draws_b = arpu_draws(variant_b, rng, n_samples)
+    draws_a = arpu_draws(variant_a, rng, n_samples, sigma_log=sigma_log)
+    draws_b = arpu_draws(variant_b, rng, n_samples, sigma_log=sigma_log)
 
     def summary(draws: np.ndarray, name: str) -> ArpuSummary:
         tail = (1.0 - ci) / 2.0

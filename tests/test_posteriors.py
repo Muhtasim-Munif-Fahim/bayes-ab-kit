@@ -118,3 +118,22 @@ def test_invalid_counts_rejected():
         BetaBinomialPosterior.from_counts(conversions=11, trials=10)
     with pytest.raises(ValueError):
         BetaBinomialPosterior().update(successes=-3, failures=0)
+
+def test_zero_conversions_keeps_prior_influenced_posterior():
+    post = BetaBinomialPosterior.from_counts(0, 20)
+    assert post.alpha == pytest.approx(1.0)
+    assert post.beta == pytest.approx(21.0)
+    lo, hi = post.credible_interval()
+    assert 0.0 <= lo < hi <= 1.0
+    assert post.mode() is None
+
+
+def test_all_conversions_extreme_posterior_stays_finite():
+    post = BetaBinomialPosterior.from_counts(50, 50)
+    assert np.isfinite(post.mean())
+    assert post.prob_above(0.9) > 0.99
+
+
+def test_empty_history_matches_prior():
+    prior = BetaBinomialPosterior(alpha0=2, beta0=5)
+    assert prior.mean() == pytest.approx(2.0 / 7.0)

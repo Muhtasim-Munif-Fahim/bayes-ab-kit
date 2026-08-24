@@ -12,3 +12,4 @@ venv/
 .vscode/
 *.log
 reports/out/
+examples/demo_report.md

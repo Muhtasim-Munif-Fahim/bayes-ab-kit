@@ -7,9 +7,10 @@ from pathlib import Path
 
 from . import __version__
 from .decisions import superiority_decision
+from .multiarms import probability_of_being_best
 from .power import required_sample_size
 from .posteriors import BetaBinomialPosterior
-from .reporting import ComparisonBlock, ConversionReport, VariantLine, render_conversion_report, write_report
+from .reporting import ComparisonBlock, ConversionReport, VariantLine, markdown_table, render_conversion_report, write_report
 from .rope import expected_loss_stop, rope_decision
 from .sequential import simulate_null_peeking
 
@@ -76,6 +77,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_rope.add_argument("--prior-beta", type=float, default=1.0)
     p_rope.add_argument("--samples", type=int, default=100_000)
     p_rope.add_argument("--seed", type=int, default=20260824)
+
+    p_best = sub.add_parser(
+        "best",
+        help="Monte Carlo P(each arm is best) for three or more conversion arms",
+    )
+    p_best.add_argument(
+        "--arm",
+        action="append",
+        required=True,
+        metavar="NAME:CONVERSIONS:TRIALS",
+        help="variant as name:conversions:trials (repeat at least three times)",
+    )
+    p_best.add_argument("--prior-alpha", type=float, default=1.0)
+    p_best.add_argument("--prior-beta", type=float, default=1.0)
+    p_best.add_argument("--samples", type=int, default=100_000)
+    p_best.add_argument("--seed", type=int, default=20260824)
 
     return parser
 
@@ -173,6 +190,58 @@ def _cmd_rope(args: argparse.Namespace) -> None:
     print(f"expected-loss decision     : {loss.decision.value}")
 
 
+def _parse_arm_spec(spec: str) -> tuple[str, int, int]:
+    parts = spec.rsplit(":", 2)
+    if len(parts) != 3:
+        raise ValueError("arm must be NAME:CONVERSIONS:TRIALS (for example A:95:1000)")
+    name, conversions_s, trials_s = parts
+    name = name.strip()
+    if not name:
+        raise ValueError("arm name must be non-empty")
+    try:
+        conversions = int(conversions_s)
+        trials = int(trials_s)
+    except ValueError as exc:
+        raise ValueError("conversions and trials must be integers") from exc
+    return name, conversions, trials
+
+
+def _cmd_best(args: argparse.Namespace) -> None:
+    if len(args.arm) < 3:
+        raise ValueError("best requires at least three --arm flags")
+    arms: dict[str, BetaBinomialPosterior] = {}
+    for spec in args.arm:
+        name, conversions, trials = _parse_arm_spec(spec)
+        if name in arms:
+            raise ValueError(f"duplicate arm name: {name}")
+        arms[name] = BetaBinomialPosterior.from_counts(
+            conversions,
+            trials,
+            alpha0=args.prior_alpha,
+            beta0=args.prior_beta,
+        )
+    result = probability_of_being_best(
+        arms, n_samples=args.samples, seed=args.seed
+    )
+    table = markdown_table(
+        ["arm", "conversions", "visitors", "mean", "P(best)"],
+        [
+            [
+                arm.name,
+                str(arm.conversions),
+                str(arm.trials),
+                f"{arm.posterior_mean:.4f}",
+                f"{arm.prob_best:.4f}",
+            ]
+            for arm in result.arms
+        ],
+    )
+    print(table)
+    print(f"leader                     : {result.leader}")
+    print(f"P(leader is best)          : {result.probabilities[result.leader]:.4f}")
+    print(f"Monte Carlo samples        : {result.n_samples}")
+
+
 def _cmd_peek(args: argparse.Namespace) -> None:
     result = simulate_null_peeking(
         p_true=args.rate,
@@ -197,6 +266,7 @@ def main(argv: list[str] | None = None) -> int:
         "power": _cmd_power,
         "peek": _cmd_peek,
         "rope": _cmd_rope,
+        "best": _cmd_best,
     }
     try:
         handlers[args.command](args)

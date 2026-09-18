@@ -35,6 +35,9 @@ bayes-ab peek --rate 0.10 --per-look 500 --looks 5
 bayes-ab rope --conversions-a 95 --trials-a 1000 \
               --conversions-b 130 --trials-b 1000 \
               --rope 0.01 --loss-threshold 0.0025
+
+# P(each arm is best) for three or more conversion variants
+bayes-ab best --arm A:95:1000 --arm B:130:1000 --arm C:110:1000
 ```
 
 The console script is provided by `pip install -e .`; alternatively run
@@ -49,6 +52,7 @@ from bayes_ab_kit import (
     superiority_decision,
     expected_loss,
     expected_loss_stop,
+    probability_of_being_best,
     rope_decision,
     evaluate_variants,
     VariantData,
@@ -60,6 +64,8 @@ print(superiority_decision(a, b).decision)          # ship_b / ship_a / keep_run
 print(rope_decision(a, b, rope=0.01).decision)      # ship_* / practical_equivalence / keep_running
 print(expected_loss(b, a))                          # E[max(rate_A - rate_B, 0)]
 print(expected_loss_stop(a, b, threshold=0.0025).should_stop)
+c = BetaBinomialPosterior.from_counts(110, trials=1000)
+print(probability_of_being_best({"A": a, "B": b, "C": c}).probabilities)
 
 orders_a = np.random.default_rng(1).lognormal(size=120)
 orders_b = np.random.default_rng(2).lognormal(size=150)
@@ -79,6 +85,7 @@ value), so reports are reproducible.
 | --- | --- |
 | `posteriors` | Beta-Binomial conjugate posteriors for conversion rates |
 | `decisions` | Credible-interval superiority rules, P(B beats A) by quadrature or Monte Carlo |
+| `multiarms` | Monte Carlo P(each arm is best) for three or more conversion variants |
 | `rope` | ROPE win / loss / practical-equivalence decisions and expected-loss stopping |
 | `risk` | Expected-loss stopping rule with a tolerance threshold |
 | `sampling` | Seeded generators and draw summaries |
@@ -116,6 +123,10 @@ python -m pytest tests -q
   ``[-rope, rope]`` (or an explicit interval) on ``rate_B - rate_A``;
   expected-loss stopping ships the posterior-mean leader only when its
   expected loss is below the chosen threshold.
+- Multi-arm P(best) is a seeded Monte Carlo estimate of which arm has the
+  highest conversion rate; exact ties (rare for continuous Beta draws)
+  are split equally so the shares sum to one. It is a ranking diagnostic,
+  not a ROPE or expected-loss stopping rule.
 - The lognormal revenue model treats the log-scale dispersion as fixed;
   uncertainty is modelled only over the mean.
 - Sequential guardrails rely on Normal approximations for speed and are

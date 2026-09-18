@@ -123,6 +123,79 @@ def test_rope_equivalence_and_custom_thresholds(capsys):
     assert "stop for expected loss     : yes" in out
 
 
+def test_best_three_arms_prints_table_and_leader(capsys):
+    rc = main(
+        [
+            "best",
+            "--arm", "A:40:1000",
+            "--arm", "B:95:1000",
+            "--arm", "C:50:1000",
+            "--samples", "20000",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "P(best)" in out
+    assert "leader                     : B" in out
+    assert "P(leader is best)" in out
+    assert "Monte Carlo samples        : 20000" in out
+
+
+def test_best_parser_collects_repeated_arm_flags():
+    parser = build_parser()
+    args = parser.parse_args(
+        ["best", "--arm", "A:1:10", "--arm", "B:2:10", "--arm", "C:3:10", "--samples", "1000"]
+    )
+    assert args.arm == ["A:1:10", "B:2:10", "C:3:10"]
+    assert args.samples == 1000
+
+
+def test_best_requires_three_arms(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["best", "--arm", "A:10:100", "--arm", "B:12:100"])
+    err = capsys.readouterr().err
+    assert excinfo.value.code == 2
+    assert "at least three" in err
+
+
+def test_best_rejects_malformed_arm_spec(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["best", "--arm", "A:10:100", "--arm", "B:12:100", "--arm", "not-a-spec"])
+    err = capsys.readouterr().err
+    assert excinfo.value.code == 2
+    assert "NAME:CONVERSIONS:TRIALS" in err
+
+
+def test_best_rejects_duplicate_names(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "best",
+                "--arm", "A:10:100",
+                "--arm", "A:12:100",
+                "--arm", "C:8:100",
+            ]
+        )
+    err = capsys.readouterr().err
+    assert excinfo.value.code == 2
+    assert "duplicate arm name" in err
+
+
+def test_best_rejects_conversions_outside_trials(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "best",
+                "--arm", "A:10:100",
+                "--arm", "B:12:100",
+                "--arm", "C:200:100",
+            ]
+        )
+    err = capsys.readouterr().err
+    assert excinfo.value.code == 2
+    assert "conversion count" in err
+
+
 def test_rope_invalid_half_width_exits_with_code_two(capsys):
     with pytest.raises(SystemExit) as excinfo:
         main(

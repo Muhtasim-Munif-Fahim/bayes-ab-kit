@@ -10,6 +10,7 @@ from .decisions import superiority_decision
 from .power import required_sample_size
 from .posteriors import BetaBinomialPosterior
 from .reporting import ComparisonBlock, ConversionReport, VariantLine, render_conversion_report, write_report
+from .rope import expected_loss_stop, rope_decision
 from .sequential import simulate_null_peeking
 
 
@@ -49,6 +50,32 @@ def build_parser() -> argparse.ArgumentParser:
     p_peek.add_argument("--alpha", type=float, default=0.05)
     p_peek.add_argument("--sims", type=int, default=2000)
     p_peek.add_argument("--seed", type=int, default=20260824)
+
+    p_rope = sub.add_parser(
+        "rope",
+        help="ROPE win/loss/equivalence decision and expected-loss stopping",
+    )
+    p_rope.add_argument("--conversions-a", type=int, required=True)
+    p_rope.add_argument("--trials-a", type=int, required=True)
+    p_rope.add_argument("--conversions-b", type=int, required=True)
+    p_rope.add_argument("--trials-b", type=int, required=True)
+    p_rope.add_argument(
+        "--rope",
+        type=float,
+        default=0.01,
+        help="symmetric ROPE half-width on rate_B - rate_A (default: 0.01)",
+    )
+    p_rope.add_argument(
+        "--loss-threshold",
+        type=float,
+        default=0.0025,
+        help="stop if the leader's expected loss is below this value",
+    )
+    p_rope.add_argument("--ci", type=float, default=0.95)
+    p_rope.add_argument("--prior-alpha", type=float, default=1.0)
+    p_rope.add_argument("--prior-beta", type=float, default=1.0)
+    p_rope.add_argument("--samples", type=int, default=100_000)
+    p_rope.add_argument("--seed", type=int, default=20260824)
 
     return parser
 
@@ -106,6 +133,46 @@ def _cmd_power(args: argparse.Namespace) -> None:
     print(f"target power     : {plan.power:.2f}")
 
 
+def _cmd_rope(args: argparse.Namespace) -> None:
+    posterior_a = BetaBinomialPosterior.from_counts(
+        args.conversions_a, args.trials_a,
+        alpha0=args.prior_alpha, beta0=args.prior_beta,
+    )
+    posterior_b = BetaBinomialPosterior.from_counts(
+        args.conversions_b, args.trials_b,
+        alpha0=args.prior_alpha, beta0=args.prior_beta,
+    )
+    rope = rope_decision(
+        posterior_a,
+        posterior_b,
+        rope=args.rope,
+        ci=args.ci,
+        n_samples=args.samples,
+        seed=args.seed,
+    )
+    loss = expected_loss_stop(
+        posterior_a,
+        posterior_b,
+        threshold=args.loss_threshold,
+        n_samples=args.samples,
+        seed=args.seed,
+    )
+    print(f"ROPE interval              : [{rope.rope_lower:+.4f}, {rope.rope_upper:+.4f}]")
+    print(f"P(diff in ROPE)            : {rope.prob_in_rope:.4f}")
+    print(f"P(B practically better)    : {rope.prob_above_rope:.4f}")
+    print(f"P(A practically better)    : {rope.prob_below_rope:.4f}")
+    print(
+        f"{rope.ci:.0%} CI for B - A          : "
+        f"[{rope.diff_ci_lower:+.4f}, {rope.diff_ci_upper:+.4f}]"
+    )
+    print(f"ROPE decision              : {rope.decision.value}")
+    print(f"leader                     : {loss.leader}")
+    print(f"expected loss of leader    : {loss.expected_loss:.5f}")
+    print(f"loss threshold             : {loss.threshold:g}")
+    print(f"stop for expected loss     : {'yes' if loss.should_stop else 'no'}")
+    print(f"expected-loss decision     : {loss.decision.value}")
+
+
 def _cmd_peek(args: argparse.Namespace) -> None:
     result = simulate_null_peeking(
         p_true=args.rate,
@@ -125,7 +192,12 @@ def _cmd_peek(args: argparse.Namespace) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    handlers = {"convert": _cmd_convert, "power": _cmd_power, "peek": _cmd_peek}
+    handlers = {
+        "convert": _cmd_convert,
+        "power": _cmd_power,
+        "peek": _cmd_peek,
+        "rope": _cmd_rope,
+    }
     try:
         handlers[args.command](args)
     except ValueError as exc:

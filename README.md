@@ -30,6 +30,11 @@ bayes-ab power --baseline 0.10 --expected 0.125
 
 # False-stop risk of checking significance after every 500 visitors
 bayes-ab peek --rate 0.10 --per-look 500 --looks 5
+
+# ROPE win / loss / practical equivalence, plus expected-loss stopping
+bayes-ab rope --conversions-a 95 --trials-a 1000 \
+              --conversions-b 130 --trials-b 1000 \
+              --rope 0.01 --loss-threshold 0.0025
 ```
 
 The console script is provided by `pip install -e .`; alternatively run
@@ -43,6 +48,8 @@ from bayes_ab_kit import (
     BetaBinomialPosterior,
     superiority_decision,
     expected_loss,
+    expected_loss_stop,
+    rope_decision,
     evaluate_variants,
     VariantData,
 )
@@ -50,7 +57,9 @@ from bayes_ab_kit import (
 a = BetaBinomialPosterior.from_counts(95, trials=1000)
 b = BetaBinomialPosterior.from_counts(130, trials=1000)
 print(superiority_decision(a, b).decision)          # ship_b / ship_a / keep_running
+print(rope_decision(a, b, rope=0.01).decision)      # ship_* / practical_equivalence / keep_running
 print(expected_loss(b, a))                          # E[max(rate_A - rate_B, 0)]
+print(expected_loss_stop(a, b, threshold=0.0025).should_stop)
 
 orders_a = np.random.default_rng(1).lognormal(size=120)
 orders_b = np.random.default_rng(2).lognormal(size=150)
@@ -70,6 +79,7 @@ value), so reports are reproducible.
 | --- | --- |
 | `posteriors` | Beta-Binomial conjugate posteriors for conversion rates |
 | `decisions` | Credible-interval superiority rules, P(B beats A) by quadrature or Monte Carlo |
+| `rope` | ROPE win / loss / practical-equivalence decisions and expected-loss stopping |
 | `risk` | Expected-loss stopping rule with a tolerance threshold |
 | `sampling` | Seeded generators and draw summaries |
 | `revenue` | Normal and Lognormal order-value models with analytic expected value |
@@ -102,6 +112,10 @@ python -m pytest tests -q
 - Conversion decisions use equal-tailed credible intervals on Monte Carlo
   estimates of the rate difference; results vary slightly across sample
   counts even with a fixed seed.
+- ROPE decisions compare that same equal-tailed interval with
+  ``[-rope, rope]`` (or an explicit interval) on ``rate_B - rate_A``;
+  expected-loss stopping ships the posterior-mean leader only when its
+  expected loss is below the chosen threshold.
 - The lognormal revenue model treats the log-scale dispersion as fixed;
   uncertainty is modelled only over the mean.
 - Sequential guardrails rely on Normal approximations for speed and are

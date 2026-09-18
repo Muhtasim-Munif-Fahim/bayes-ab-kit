@@ -88,3 +88,51 @@ def test_no_command_shows_help_error():
     with pytest.raises(SystemExit) as excinfo:
         main([])
     assert excinfo.value.code == 2
+
+
+def test_rope_clear_winner_prints_decision_and_loss(capsys):
+    rc = main(
+        [
+            "rope",
+            "--conversions-a", "40", "--trials-a", "1000",
+            "--conversions-b", "95", "--trials-b", "1000",
+            "--samples", "20000",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "ROPE decision              : ship_b" in out
+    assert "stop for expected loss     : yes" in out
+    assert "expected-loss decision     : ship_b" in out
+
+
+def test_rope_equivalence_and_custom_thresholds(capsys):
+    rc = main(
+        [
+            "rope",
+            "--conversions-a", "10000", "--trials-a", "100000",
+            "--conversions-b", "10020", "--trials-b", "100000",
+            "--rope", "0.01",
+            "--loss-threshold", "0.01",
+            "--samples", "20000",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "practical_equivalence" in out
+    assert "stop for expected loss     : yes" in out
+
+
+def test_rope_invalid_half_width_exits_with_code_two(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "rope",
+                "--conversions-a", "10", "--trials-a", "100",
+                "--conversions-b", "12", "--trials-b", "100",
+                "--rope", "0",
+            ]
+        )
+    err = capsys.readouterr().err
+    assert excinfo.value.code == 2
+    assert "error" in err

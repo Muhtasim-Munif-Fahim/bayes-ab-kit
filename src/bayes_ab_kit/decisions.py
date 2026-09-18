@@ -1,4 +1,7 @@
-"""Superiority decision rules comparing two conversion-rate posteriors."""
+"""Superiority decision rules comparing two conversion-rate posteriors.
+
+ROPE (practical-equivalence) rules live in :mod:`bayes_ab_kit.rope`.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +19,7 @@ class Decision(str, Enum):
 
     SHIP_A = "ship_a"
     SHIP_B = "ship_b"
+    PRACTICAL_EQUIVALENCE = "practical_equivalence"
     KEEP_RUNNING = "keep_running"
 
 

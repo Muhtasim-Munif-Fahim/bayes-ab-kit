@@ -8,6 +8,7 @@ from .posteriors import BetaBinomialPosterior
 from .power import SampleSizePlan, required_sample_size
 from .reporting import ConversionReport, render_conversion_report, write_report
 from .risk import RiskResult, expected_loss, risk_decision
+from .rope import ExpectedLossStopResult, RopeResult, expected_loss_stop, rope_decision
 from .sampling import make_rng, summarize_draws
 from .sequential import PeekSimulationResult, simulate_null_peeking
 from .stopping import StoppingPlanResult, simulate_stopping_plan
@@ -18,18 +19,22 @@ __all__ = [
     "ComparisonResult",
     "ConversionReport",
     "Decision",
+    "ExpectedLossStopResult",
     "PeekSimulationResult",
     "RiskResult",
+    "RopeResult",
     "SampleSizePlan",
     "StoppingPlanResult",
     "VariantData",
     "__version__",
     "evaluate_variants",
     "expected_loss",
+    "expected_loss_stop",
     "make_rng",
     "render_conversion_report",
     "required_sample_size",
     "risk_decision",
+    "rope_decision",
     "simulate_null_peeking",
     "simulate_stopping_plan",
     "summarize_draws",

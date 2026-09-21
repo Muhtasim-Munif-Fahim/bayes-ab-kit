@@ -1,8 +1,9 @@
 # bayes-ab-kit
 
 Bayesian A/B testing and experiment analysis toolkit: conversion posteriors,
-revenue models, decision rules, sequential guardrails, power planning,
-synthetic data, Markdown reports, and a command-line interface.
+control-referenced uplift, revenue models, decision rules, sequential
+guardrails, power planning, synthetic data, Markdown reports, and a
+command-line interface.
 
 ## Install
 
@@ -38,6 +39,9 @@ bayes-ab rope --conversions-a 95 --trials-a 1000 \
 
 # P(each arm is best) for three or more conversion variants
 bayes-ab best --arm A:95:1000 --arm B:130:1000 --arm C:110:1000
+
+# P(variant > control), expected uplift, and credible intervals
+bayes-ab uplift --control A:95:1000 --arm B:130:1000 --arm C:110:1000
 ```
 
 The console script is provided by `pip install -e .`; alternatively run
@@ -56,6 +60,8 @@ from bayes_ab_kit import (
     rope_decision,
     evaluate_variants,
     VariantData,
+    variant_vs_control,
+    variants_vs_control,
 )
 
 a = BetaBinomialPosterior.from_counts(95, trials=1000)
@@ -64,8 +70,13 @@ print(superiority_decision(a, b).decision)          # ship_b / ship_a / keep_run
 print(rope_decision(a, b, rope=0.01).decision)      # ship_* / practical_equivalence / keep_running
 print(expected_loss(b, a))                          # E[max(rate_A - rate_B, 0)]
 print(expected_loss_stop(a, b, threshold=0.0025).should_stop)
+uplift = variant_vs_control(a, b)
+print(uplift.prob_beats_control)                    # P(B > A) by quadrature
+print(uplift.expected_uplift, uplift.expected_relative_uplift)
+print(uplift.uplift_ci_lower, uplift.uplift_ci_upper)
 c = BetaBinomialPosterior.from_counts(110, trials=1000)
 print(probability_of_being_best({"A": a, "B": b, "C": c}).probabilities)
+print(variants_vs_control({"A": a, "B": b, "C": c}, control="A").variants)
 
 orders_a = np.random.default_rng(1).lognormal(size=120)
 orders_b = np.random.default_rng(2).lognormal(size=150)
@@ -86,6 +97,7 @@ value), so reports are reproducible.
 | `posteriors` | Beta-Binomial conjugate posteriors for conversion rates |
 | `decisions` | Credible-interval superiority rules, P(B beats A) by quadrature or Monte Carlo |
 | `multiarms` | Monte Carlo P(each arm is best) for three or more conversion variants |
+| `uplift` | P(variant > control), conjugate E[absolute/relative uplift], and CIs |
 | `rope` | ROPE win / loss / practical-equivalence decisions and expected-loss stopping |
 | `risk` | Expected-loss stopping rule with a tolerance threshold |
 | `sampling` | Seeded generators and draw summaries |
@@ -127,6 +139,16 @@ python -m pytest tests -q
   highest conversion rate; exact ties (rare for continuous Beta draws)
   are split equally so the shares sum to one. It is a ranking diagnostic,
   not a ROPE or expected-loss stopping rule.
+- Control-referenced uplift (`variant_vs_control`) reports P(variant >
+  control) by quadrature, `E[rate_v - rate_c]` from Beta means, and
+  `E[(rate_v - rate_c) / rate_c] = E[rate_v] E[1 / rate_c] - 1` when the
+  control posterior shape `alpha` is greater than 1. That relative
+  expectation is not `(μ_v - μ_c) / μ_c`; it diverges when `alpha <= 1`
+  (for example a uniform prior and zero control conversions). Equal-tailed
+  intervals for both uplift scales use the same seeded Monte Carlo stream
+  as the two-arm difference interval, so they line up with ROPE decisions
+  at a matching seed and sample count. `variants_vs_control` scores each
+  non-control arm this way and is not a P(best) ranking.
 - The lognormal revenue model treats the log-scale dispersion as fixed;
   uncertainty is modelled only over the mean.
 - Sequential guardrails rely on Normal approximations for speed and are

@@ -33,6 +33,7 @@ from bayes_ab_kit.risk import expected_loss
 from bayes_ab_kit.sequential import simulate_null_peeking
 from bayes_ab_kit.stopping import simulate_stopping_plan
 from bayes_ab_kit.synthdata import generate_experiment, uplift_pair_specs
+from bayes_ab_kit.uplift import variant_vs_control
 
 
 def main(out_path: Path = Path(__file__).parent / "demo_report.md") -> Path:
@@ -49,6 +50,7 @@ def main(out_path: Path = Path(__file__).parent / "demo_report.md") -> Path:
     post_b = BetaBinomialPosterior.from_counts(treatment.conversions, treatment.trials)
 
     comparison = superiority_decision(post_a, post_b, ci=0.95)
+    uplift = variant_vs_control(post_a, post_b, ci=0.95)
     loss_if_ship_b = expected_loss(post_b, post_a, n_samples=50_000)
 
     arpu = evaluate_variants(
@@ -84,6 +86,10 @@ def main(out_path: Path = Path(__file__).parent / "demo_report.md") -> Path:
             diff_lower=comparison.diff_ci_lower,
             diff_upper=comparison.diff_ci_upper,
             decision=comparison.decision.value,
+            expected_uplift=uplift.expected_uplift,
+            expected_relative_uplift=uplift.expected_relative_uplift,
+            relative_diff_lower=uplift.relative_uplift_ci_lower,
+            relative_diff_upper=uplift.relative_uplift_ci_upper,
             notes=[
                 f"Expected loss if shipping B: {loss_if_ship_b:.5f} (threshold 0.0025).",
                 (

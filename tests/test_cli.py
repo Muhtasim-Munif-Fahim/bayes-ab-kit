@@ -15,6 +15,8 @@ def test_convert_clear_winner_prints_report(capsys):
     assert rc == 0
     assert "# Conversion test" in out
     assert "ship_b" in out
+    assert "E[uplift] (B - A)" in out
+    assert "E[relative uplift]" in out
 
 
 def test_convert_writes_report_file(tmp_path, capsys):
@@ -209,3 +211,81 @@ def test_rope_invalid_half_width_exits_with_code_two(capsys):
     err = capsys.readouterr().err
     assert excinfo.value.code == 2
     assert "error" in err
+
+
+def test_uplift_two_arms_prints_probability_and_expectations(capsys):
+    rc = main(
+        [
+            "uplift",
+            "--control", "A:40:1000",
+            "--arm", "B:95:1000",
+            "--samples", "20000",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "P(> control)" in out
+    assert "E[uplift]" in out
+    assert "E[rel. uplift]" in out
+    assert "control                    : A" in out
+    assert "Monte Carlo samples        : 20000" in out
+    table_body = out.split("control                    :")[0]
+    assert "| B " in table_body
+    assert "| A " not in table_body
+
+
+def test_uplift_multi_arm_prints_each_variant(capsys):
+    rc = main(
+        [
+            "uplift",
+            "--control", "A:40:1000",
+            "--arm", "B:95:1000",
+            "--arm", "C:50:1000",
+            "--samples", "15000",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "| B " in out
+    assert "| C " in out
+    assert "control                    : A" in out
+
+
+def test_uplift_parser_collects_control_and_arms():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "uplift",
+            "--control", "A:1:10",
+            "--arm", "B:2:10",
+            "--arm", "C:3:10",
+            "--samples", "1000",
+            "--ci", "0.9",
+        ]
+    )
+    assert args.control == "A:1:10"
+    assert args.arm == ["B:2:10", "C:3:10"]
+    assert args.samples == 1000
+    assert args.ci == 0.9
+
+
+def test_uplift_rejects_duplicate_control_name(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "uplift",
+                "--control", "A:10:100",
+                "--arm", "A:12:100",
+            ]
+        )
+    err = capsys.readouterr().err
+    assert excinfo.value.code == 2
+    assert "duplicate arm name" in err
+
+
+def test_uplift_rejects_malformed_spec(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["uplift", "--control", "A:10:100", "--arm", "not-a-spec"])
+    err = capsys.readouterr().err
+    assert excinfo.value.code == 2
+    assert "NAME:CONVERSIONS:TRIALS" in err

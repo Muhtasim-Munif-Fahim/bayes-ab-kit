@@ -65,6 +65,24 @@ def test_report_contains_sections_and_numbers():
     assert "| A " in md and "| B " in md
 
 
+def test_report_includes_uplift_lines_when_present():
+    block = ComparisonBlock(
+        0.99,
+        0.01,
+        0.05,
+        "ship_b",
+        expected_uplift=0.034,
+        expected_relative_uplift=0.42,
+        relative_diff_lower=0.10,
+        relative_diff_upper=0.80,
+    )
+    md = render_conversion_report(make_report(comparison=block))
+    assert "E[uplift] (B - A)" in md
+    assert "E[relative uplift]" in md
+    assert "relative uplift ((B - A) / A)" in md
+    assert "+0.0340" in md
+
+
 def test_report_includes_notes_when_present():
     block = ComparisonBlock(0.99, 0.01, 0.05, "ship_b", notes=["Check SRM before shipping."])
     md = render_conversion_report(make_report(comparison=block))

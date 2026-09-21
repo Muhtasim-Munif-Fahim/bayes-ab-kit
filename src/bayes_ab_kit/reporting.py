@@ -49,6 +49,10 @@ class ComparisonBlock:
     diff_upper: float
     decision: str
     notes: list[str] = field(default_factory=list)
+    expected_uplift: float | None = None
+    expected_relative_uplift: float | None = None
+    relative_diff_lower: float | None = None
+    relative_diff_upper: float | None = None
 
 
 @dataclass(frozen=True)
@@ -98,8 +102,17 @@ def render_conversion_report(report: ConversionReport) -> str:
         "",
         f"- P(B beats A): `{c.prob_b_beats_a:.4f}`",
         f"- 95% CI for rate difference (B - A): `[{c.diff_lower:+.4f}, {c.diff_upper:+.4f}]`",
-        f"- Decision: **{c.decision}**",
     ]
+    if c.expected_uplift is not None:
+        parts.append(f"- E[uplift] (B - A): `{c.expected_uplift:+.4f}`")
+    if c.expected_relative_uplift is not None:
+        parts.append(f"- E[relative uplift]: `{c.expected_relative_uplift:+.4f}`")
+    if c.relative_diff_lower is not None and c.relative_diff_upper is not None:
+        parts.append(
+            "- 95% CI for relative uplift ((B - A) / A): "
+            f"`[{c.relative_diff_lower:+.4f}, {c.relative_diff_upper:+.4f}]`"
+        )
+    parts.append(f"- Decision: **{c.decision}**")
     if c.notes:
         parts.append("")
         parts.append("## Notes")

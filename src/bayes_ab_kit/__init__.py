@@ -13,12 +13,22 @@ from .rope import ExpectedLossStopResult, RopeResult, expected_loss_stop, rope_d
 from .sampling import make_rng, summarize_draws
 from .sequential import PeekSimulationResult, simulate_null_peeking
 from .stopping import StoppingPlanResult, simulate_stopping_plan
+from .uplift import (
+    ControlUpliftResult,
+    UpliftResult,
+    VariantVsControl,
+    expected_absolute_uplift,
+    expected_relative_uplift,
+    variant_vs_control,
+    variants_vs_control,
+)
 
 __all__ = [
     "ArmBestShare",
     "ArpuEvaluation",
     "BetaBinomialPosterior",
     "ComparisonResult",
+    "ControlUpliftResult",
     "ConversionReport",
     "Decision",
     "ExpectedLossStopResult",
@@ -28,11 +38,15 @@ __all__ = [
     "RopeResult",
     "SampleSizePlan",
     "StoppingPlanResult",
+    "UpliftResult",
     "VariantData",
+    "VariantVsControl",
     "__version__",
     "evaluate_variants",
+    "expected_absolute_uplift",
     "expected_loss",
     "expected_loss_stop",
+    "expected_relative_uplift",
     "make_rng",
     "probability_of_being_best",
     "render_conversion_report",
@@ -43,5 +57,7 @@ __all__ = [
     "simulate_stopping_plan",
     "summarize_draws",
     "superiority_decision",
+    "variant_vs_control",
+    "variants_vs_control",
     "write_report",
 ]

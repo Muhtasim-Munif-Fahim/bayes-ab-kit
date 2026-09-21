@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 from pathlib import Path
 
 from . import __version__
@@ -13,6 +14,7 @@ from .posteriors import BetaBinomialPosterior
 from .reporting import ComparisonBlock, ConversionReport, VariantLine, markdown_table, render_conversion_report, write_report
 from .rope import expected_loss_stop, rope_decision
 from .sequential import simulate_null_peeking
+from .uplift import variant_vs_control, variants_vs_control
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -94,6 +96,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_best.add_argument("--samples", type=int, default=100_000)
     p_best.add_argument("--seed", type=int, default=20260824)
 
+    p_uplift = sub.add_parser(
+        "uplift",
+        help="P(variant > control), expected uplift, and credible intervals",
+    )
+    p_uplift.add_argument(
+        "--control",
+        required=True,
+        metavar="NAME:CONVERSIONS:TRIALS",
+        help="control arm as name:conversions:trials",
+    )
+    p_uplift.add_argument(
+        "--arm",
+        action="append",
+        required=True,
+        metavar="NAME:CONVERSIONS:TRIALS",
+        help="variant as name:conversions:trials (repeat for extra arms)",
+    )
+    p_uplift.add_argument("--ci", type=float, default=0.95)
+    p_uplift.add_argument("--prior-alpha", type=float, default=1.0)
+    p_uplift.add_argument("--prior-beta", type=float, default=1.0)
+    p_uplift.add_argument("--samples", type=int, default=100_000)
+    p_uplift.add_argument("--seed", type=int, default=20260824)
+
     return parser
 
 
@@ -107,6 +132,9 @@ def _cmd_convert(args: argparse.Namespace) -> None:
         alpha0=args.prior_alpha, beta0=args.prior_beta,
     )
     result = superiority_decision(
+        posterior_a, posterior_b, ci=args.ci, n_samples=args.samples, seed=args.seed
+    )
+    uplift = variant_vs_control(
         posterior_a, posterior_b, ci=args.ci, n_samples=args.samples, seed=args.seed
     )
 
@@ -125,6 +153,10 @@ def _cmd_convert(args: argparse.Namespace) -> None:
             diff_upper=result.diff_ci_upper,
             decision=result.decision.value,
             notes=[f"Monte Carlo samples per variant: {args.samples}"],
+            expected_uplift=uplift.expected_uplift,
+            expected_relative_uplift=uplift.expected_relative_uplift,
+            relative_diff_lower=uplift.relative_uplift_ci_lower,
+            relative_diff_upper=uplift.relative_uplift_ci_upper,
         ),
     )
     markdown = render_conversion_report(report)
@@ -242,6 +274,75 @@ def _cmd_best(args: argparse.Namespace) -> None:
     print(f"Monte Carlo samples        : {result.n_samples}")
 
 
+def _posterior_from_spec(
+    spec: str, prior_alpha: float, prior_beta: float
+) -> tuple[str, BetaBinomialPosterior]:
+    name, conversions, trials = _parse_arm_spec(spec)
+    return name, BetaBinomialPosterior.from_counts(
+        conversions,
+        trials,
+        alpha0=prior_alpha,
+        beta0=prior_beta,
+    )
+
+
+def _cmd_uplift(args: argparse.Namespace) -> None:
+    control_name, control_post = _posterior_from_spec(
+        args.control, args.prior_alpha, args.prior_beta
+    )
+    arms: dict[str, BetaBinomialPosterior] = {control_name: control_post}
+    for spec in args.arm:
+        name, posterior = _posterior_from_spec(spec, args.prior_alpha, args.prior_beta)
+        if name in arms:
+            raise ValueError(f"duplicate arm name: {name}")
+        arms[name] = posterior
+    result = variants_vs_control(
+        arms,
+        control=control_name,
+        ci=args.ci,
+        n_samples=args.samples,
+        seed=args.seed,
+    )
+
+    def rel_cell(value: float) -> str:
+        return "inf" if not math.isfinite(value) else f"{value:+.4f}"
+
+    table = markdown_table(
+        [
+            "arm",
+            "conversions",
+            "visitors",
+            "mean",
+            "P(> control)",
+            "E[uplift]",
+            "E[rel. uplift]",
+            f"{result.ci:.0%} CI abs",
+            f"{result.ci:.0%} CI rel",
+        ],
+        [
+            [
+                arm.name,
+                str(arm.conversions),
+                str(arm.trials),
+                f"{arm.posterior_mean:.4f}",
+                f"{arm.uplift.prob_beats_control:.4f}",
+                f"{arm.uplift.expected_uplift:+.4f}",
+                rel_cell(arm.uplift.expected_relative_uplift),
+                f"[{arm.uplift.uplift_ci_lower:+.4f}, {arm.uplift.uplift_ci_upper:+.4f}]",
+                (
+                    f"[{arm.uplift.relative_uplift_ci_lower:+.4f}, "
+                    f"{arm.uplift.relative_uplift_ci_upper:+.4f}]"
+                ),
+            ]
+            for arm in result.variants
+        ],
+    )
+    print(table)
+    print(f"control                    : {result.control_name}")
+    print(f"control mean               : {result.control_mean:.4f}")
+    print(f"Monte Carlo samples        : {result.n_samples}")
+
+
 def _cmd_peek(args: argparse.Namespace) -> None:
     result = simulate_null_peeking(
         p_true=args.rate,
@@ -267,6 +368,7 @@ def main(argv: list[str] | None = None) -> int:
         "peek": _cmd_peek,
         "rope": _cmd_rope,
         "best": _cmd_best,
+        "uplift": _cmd_uplift,
     }
     try:
         handlers[args.command](args)

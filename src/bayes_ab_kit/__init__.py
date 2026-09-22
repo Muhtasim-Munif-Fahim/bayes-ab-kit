@@ -4,6 +4,7 @@ __version__ = "0.1.0"
 
 from .decisions import ComparisonResult, Decision, superiority_decision
 from .evaluation import ArpuEvaluation, VariantData, evaluate_variants
+from .hierarchical import HierarchicalBetaResult, ShrunkArm, hierarchical_beta_shrinkage
 from .multiarms import ArmBestShare, MultiArmBestResult, probability_of_being_best
 from .posteriors import BetaBinomialPosterior
 from .power import SampleSizePlan, required_sample_size
@@ -32,11 +33,13 @@ __all__ = [
     "ConversionReport",
     "Decision",
     "ExpectedLossStopResult",
+    "HierarchicalBetaResult",
     "MultiArmBestResult",
     "PeekSimulationResult",
     "RiskResult",
     "RopeResult",
     "SampleSizePlan",
+    "ShrunkArm",
     "StoppingPlanResult",
     "UpliftResult",
     "VariantData",
@@ -47,6 +50,7 @@ __all__ = [
     "expected_loss",
     "expected_loss_stop",
     "expected_relative_uplift",
+    "hierarchical_beta_shrinkage",
     "make_rng",
     "probability_of_being_best",
     "render_conversion_report",

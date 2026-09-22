@@ -289,3 +289,55 @@ def test_uplift_rejects_malformed_spec(capsys):
     err = capsys.readouterr().err
     assert excinfo.value.code == 2
     assert "NAME:CONVERSIONS:TRIALS" in err
+
+
+def test_shrink_prints_posterior_means_and_shared_prior(capsys):
+    rc = main(
+        [
+            "shrink",
+            "--arm", "noisy:8:20",
+            "--arm", "control:500:5000",
+            "--arm", "winner:2000:5000",
+            "--ci", "0.9",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "posterior mean" in out
+    assert "prior weight" in out
+    assert "90% CI" in out
+    assert "prior mean (grand mean)" in out
+    assert "shared prior alpha" in out
+    assert "| noisy " in out
+    assert "| control " in out
+    assert "| winner " in out
+    noisy_line = next(line for line in out.splitlines() if line.startswith("| noisy"))
+    cells = [cell.strip() for cell in noisy_line.strip("|").split("|")]
+    raw_rate = float(cells[3])
+    posterior_mean = float(cells[4])
+    assert raw_rate == pytest.approx(0.4)
+    assert posterior_mean < raw_rate
+
+
+def test_shrink_requires_two_arms(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["shrink", "--arm", "A:10:100"])
+    err = capsys.readouterr().err
+    assert excinfo.value.code == 2
+    assert "at least two" in err
+
+
+def test_shrink_rejects_duplicate_names(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["shrink", "--arm", "A:10:100", "--arm", "A:12:100"])
+    err = capsys.readouterr().err
+    assert excinfo.value.code == 2
+    assert "duplicate arm name" in err
+
+
+def test_shrink_rejects_conversions_outside_trials(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["shrink", "--arm", "A:10:100", "--arm", "B:200:100"])
+    err = capsys.readouterr().err
+    assert excinfo.value.code == 2
+    assert "conversion count" in err

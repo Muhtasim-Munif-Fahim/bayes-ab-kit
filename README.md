@@ -1,9 +1,9 @@
 # bayes-ab-kit
 
 Bayesian A/B testing and experiment analysis toolkit: conversion posteriors,
-control-referenced uplift, revenue models, decision rules, sequential
-guardrails, power planning, synthetic data, Markdown reports, and a
-command-line interface.
+hierarchical Beta-Binomial shrinkage, control-referenced uplift, revenue
+models, decision rules, sequential guardrails, power planning, synthetic
+data, Markdown reports, and a command-line interface.
 
 ## Install
 
@@ -42,6 +42,9 @@ bayes-ab best --arm A:95:1000 --arm B:130:1000 --arm C:110:1000
 
 # P(variant > control), expected uplift, and credible intervals
 bayes-ab uplift --control A:95:1000 --arm B:130:1000 --arm C:110:1000
+
+# Shrink noisy conversion arms toward a shared empirical-Bayes Beta prior
+bayes-ab shrink --arm noisy:8:20 --arm control:500:5000 --arm winner:2000:5000
 ```
 
 The console script is provided by `pip install -e .`; alternatively run
@@ -60,6 +63,7 @@ from bayes_ab_kit import (
     rope_decision,
     evaluate_variants,
     VariantData,
+    hierarchical_beta_shrinkage,
     variant_vs_control,
     variants_vs_control,
 )
@@ -77,6 +81,10 @@ print(uplift.uplift_ci_lower, uplift.uplift_ci_upper)
 c = BetaBinomialPosterior.from_counts(110, trials=1000)
 print(probability_of_being_best({"A": a, "B": b, "C": c}).probabilities)
 print(variants_vs_control({"A": a, "B": b, "C": c}, control="A").variants)
+shrunk = hierarchical_beta_shrinkage(
+    {"noisy": (8, 20), "control": (500, 5000), "winner": (2000, 5000)}
+)
+print(shrunk.prior_mean, shrunk.arms[0].posterior_mean, shrunk.arms[0].ci_lower)
 
 orders_a = np.random.default_rng(1).lognormal(size=120)
 orders_b = np.random.default_rng(2).lognormal(size=150)
@@ -95,6 +103,7 @@ value), so reports are reproducible.
 | Module | Purpose |
 | --- | --- |
 | `posteriors` | Beta-Binomial conjugate posteriors for conversion rates |
+| `hierarchical` | Empirical-Bayes hierarchical Beta shrinkage across many variants |
 | `decisions` | Credible-interval superiority rules, P(B beats A) by quadrature or Monte Carlo |
 | `multiarms` | Monte Carlo P(each arm is best) for three or more conversion variants |
 | `uplift` | P(variant > control), conjugate E[absolute/relative uplift], and CIs |
@@ -139,6 +148,22 @@ python -m pytest tests -q
   highest conversion rate; exact ties (rare for continuous Beta draws)
   are split equally so the shares sum to one. It is a ranking diagnostic,
   not a ROPE or expected-loss stopping rule.
+- Hierarchical Beta shrinkage (`hierarchical_beta_shrinkage`) fits one
+  shared `Beta(α, β)` by maximising the beta-binomial marginal likelihood,
+  then updates every arm with that prior. Posterior means are
+  `(1 - w) * raw_rate + w * prior_mean` with prior weight
+  `w = (α + β) / (trials + α + β)`, so noisy arms move farther toward the
+  grand mean than precise ones. Pass `ci=None` to skip equal-tailed
+  intervals. The fitted prior is a plug-in: intervals ignore uncertainty
+  in `(α, β)`, and when extra-binomial variation is absent the prior
+  strength sits on a numerical cap and pools arms tightly. The same
+  bound is used when every arm is all successes or all failures; the
+  equal-tailed interval can then sit on 0 or 1 while the posterior mean
+  stays slightly inside the unit interval, because that Beta is extremely
+  skewed.
+  `result.posteriors()` rebuilds `BetaBinomialPosterior` objects from the
+  shared prior for ROPE, P(best), and uplift; those helpers still treat
+  the arms as independent given the fixed prior.
 - Control-referenced uplift (`variant_vs_control`) reports P(variant >
   control) by quadrature, `E[rate_v - rate_c]` from Beta means, and
   `E[(rate_v - rate_c) / rate_c] = E[rate_v] E[1 / rate_c] - 1` when the

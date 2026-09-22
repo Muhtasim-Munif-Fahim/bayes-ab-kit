@@ -8,6 +8,7 @@ from pathlib import Path
 
 from . import __version__
 from .decisions import superiority_decision
+from .hierarchical import hierarchical_beta_shrinkage
 from .multiarms import probability_of_being_best
 from .power import required_sample_size
 from .posteriors import BetaBinomialPosterior
@@ -118,6 +119,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_uplift.add_argument("--prior-beta", type=float, default=1.0)
     p_uplift.add_argument("--samples", type=int, default=100_000)
     p_uplift.add_argument("--seed", type=int, default=20260824)
+
+    p_shrink = sub.add_parser(
+        "shrink",
+        help="empirical-Bayes hierarchical Beta shrinkage across conversion arms",
+    )
+    p_shrink.add_argument(
+        "--arm",
+        action="append",
+        required=True,
+        metavar="NAME:CONVERSIONS:TRIALS",
+        help="variant as name:conversions:trials (repeat at least twice)",
+    )
+    p_shrink.add_argument("--ci", type=float, default=0.95)
 
     return parser
 
@@ -343,6 +357,46 @@ def _cmd_uplift(args: argparse.Namespace) -> None:
     print(f"Monte Carlo samples        : {result.n_samples}")
 
 
+def _cmd_shrink(args: argparse.Namespace) -> None:
+    if len(args.arm) < 2:
+        raise ValueError("shrink requires at least two --arm flags")
+    arms: dict[str, tuple[int, int]] = {}
+    for spec in args.arm:
+        name, conversions, trials = _parse_arm_spec(spec)
+        if name in arms:
+            raise ValueError(f"duplicate arm name: {name}")
+        arms[name] = (conversions, trials)
+    result = hierarchical_beta_shrinkage(arms, ci=args.ci)
+    table = markdown_table(
+        [
+            "arm",
+            "conversions",
+            "visitors",
+            "raw rate",
+            "posterior mean",
+            "prior weight",
+            f"{result.ci:.0%} CI",
+        ],
+        [
+            [
+                arm.name,
+                str(arm.conversions),
+                str(arm.trials),
+                f"{arm.raw_rate:.4f}",
+                f"{arm.posterior_mean:.4f}",
+                f"{arm.prior_weight:.4f}",
+                f"[{arm.ci_lower:.4f}, {arm.ci_upper:.4f}]",
+            ]
+            for arm in result.arms
+        ],
+    )
+    print(table)
+    print(f"shared prior alpha         : {result.prior_alpha:.4f}")
+    print(f"shared prior beta          : {result.prior_beta:.4f}")
+    print(f"prior mean (grand mean)    : {result.prior_mean:.4f}")
+    print(f"prior strength             : {result.prior_strength:.4f}")
+
+
 def _cmd_peek(args: argparse.Namespace) -> None:
     result = simulate_null_peeking(
         p_true=args.rate,
@@ -369,6 +423,7 @@ def main(argv: list[str] | None = None) -> int:
         "rope": _cmd_rope,
         "best": _cmd_best,
         "uplift": _cmd_uplift,
+        "shrink": _cmd_shrink,
     }
     try:
         handlers[args.command](args)

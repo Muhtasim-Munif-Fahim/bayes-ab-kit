@@ -32,6 +32,13 @@ bayes-ab power --baseline 0.10 --expected 0.125
 # False-stop risk of checking significance after every 500 visitors
 bayes-ab peek --rate 0.10 --per-look 500 --looks 5
 
+# Exact BF10 for independent vs shared conversion rates
+bayes-ab bayes-factor --conversions-a 95 --trials-a 1000 \
+                    --conversions-b 130 --trials-b 1000
+
+# Sequential early-stopping operating characteristics on |log BF10|
+bayes-ab bf-stop --rate-a 0.10 --rate-b 0.12 --per-look 500 --looks 5
+
 # ROPE win / loss / practical equivalence, plus expected-loss stopping
 bayes-ab rope --conversions-a 95 --trials-a 1000 \
               --conversions-b 130 --trials-b 1000 \
@@ -111,6 +118,7 @@ value), so reports are reproducible.
 | `risk` | Expected-loss stopping rule with a tolerance threshold |
 | `sampling` | Seeded generators and draw summaries |
 | `revenue` | Normal and Lognormal order-value models with analytic expected value |
+| `bayes_factor` | Exact Beta-Binomial BF10 vs a shared-rate null, Kass–Raftery labels, and sequential `|log BF|` early stopping |
 | `evaluation` | Joint conversion x revenue (ARPU) comparison |
 | `sequential` | A/A peeking simulations quantifying false-stop inflation |
 | `stopping` | Bayesian stopping plans: detection rate and expected sample size |

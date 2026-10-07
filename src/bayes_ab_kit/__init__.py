@@ -2,6 +2,15 @@
 
 __version__ = "0.1.0"
 
+from .bayes_factor import (
+    BayesFactorResult,
+    SequentialBayesFactorResult,
+    bayes_factor_10,
+    bayes_factor_decision,
+    kass_raftery_label,
+    log_bayes_factor_10,
+    simulate_bayes_factor_stopping,
+)
 from .decisions import ComparisonResult, Decision, superiority_decision
 from .evaluation import ArpuEvaluation, VariantData, evaluate_variants
 from .hierarchical import HierarchicalBetaResult, ShrunkArm, hierarchical_beta_shrinkage
@@ -27,6 +36,13 @@ from .uplift import (
 __all__ = [
     "ArmBestShare",
     "ArpuEvaluation",
+    "simulate_bayes_factor_stopping",
+    "log_bayes_factor_10",
+    "kass_raftery_label",
+    "bayes_factor_decision",
+    "bayes_factor_10",
+    "SequentialBayesFactorResult",
+    "BayesFactorResult",
     "BetaBinomialPosterior",
     "ComparisonResult",
     "ControlUpliftResult",

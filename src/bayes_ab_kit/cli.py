@@ -13,6 +13,7 @@ from .multiarms import probability_of_being_best
 from .power import required_sample_size
 from .posteriors import BetaBinomialPosterior
 from .reporting import ComparisonBlock, ConversionReport, VariantLine, markdown_table, render_conversion_report, write_report
+from .bayes_factor import bayes_factor_decision, simulate_bayes_factor_stopping
 from .rope import expected_loss_stop, rope_decision
 from .sequential import simulate_null_peeking
 from .uplift import variant_vs_control, variants_vs_control
@@ -132,6 +133,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="variant as name:conversions:trials (repeat at least twice)",
     )
     p_shrink.add_argument("--ci", type=float, default=0.95)
+
+    bf = sub.add_parser(
+        "bayes-factor",
+        help="Beta-Binomial Bayes factor BF10 with Kass-Raftery label",
+    )
+    bf.add_argument("--conversions-a", type=int, required=True)
+    bf.add_argument("--trials-a", type=int, required=True)
+    bf.add_argument("--conversions-b", type=int, required=True)
+    bf.add_argument("--trials-b", type=int, required=True)
+    bf.add_argument("--prior-alpha", type=float, default=1.0)
+    bf.add_argument("--prior-beta", type=float, default=1.0)
+
+    bf_stop = sub.add_parser(
+        "bf-stop",
+        help="Simulate sequential early stopping on |log BF10|",
+    )
+    bf_stop.add_argument("--rate-a", type=float, required=True)
+    bf_stop.add_argument("--rate-b", type=float, required=True)
+    bf_stop.add_argument("--per-look", type=int, default=500)
+    bf_stop.add_argument("--looks", type=int, default=5)
+    bf_stop.add_argument("--log-bf-threshold", type=float, default=None,
+                         help="default log(10) ≈ 2.302 (strong evidence)")
+    bf_stop.add_argument("--simulations", type=int, default=2000)
+    bf_stop.add_argument("--seed", type=int, default=20261007)
+    bf_stop.add_argument("--prior-alpha", type=float, default=1.0)
+    bf_stop.add_argument("--prior-beta", type=float, default=1.0)
 
     return parser
 
@@ -413,6 +440,43 @@ def _cmd_peek(args: argparse.Namespace) -> None:
     print(f"empirical false-stop rate  : {result.false_stop_rate:.3f}")
 
 
+
+def _cmd_bayes_factor(args: argparse.Namespace) -> None:
+    posterior_a = BetaBinomialPosterior.from_counts(
+        args.conversions_a, args.trials_a,
+        alpha0=args.prior_alpha, beta0=args.prior_beta,
+    )
+    posterior_b = BetaBinomialPosterior.from_counts(
+        args.conversions_b, args.trials_b,
+        alpha0=args.prior_alpha, beta0=args.prior_beta,
+    )
+    result = bayes_factor_decision(posterior_a, posterior_b)
+    print(f"BF10                       : {result.bf10:.6g}")
+    print(f"log BF10                   : {result.log_bf10:.4f}")
+    print(f"Kass-Raftery               : {result.label}")
+    print(f"decision                   : {result.decision.value}")
+
+
+def _cmd_bf_stop(args: argparse.Namespace) -> None:
+    import math
+    threshold = args.log_bf_threshold if args.log_bf_threshold is not None else math.log(10.0)
+    result = simulate_bayes_factor_stopping(
+        true_rate_a=args.rate_a,
+        true_rate_b=args.rate_b,
+        per_look=args.per_look,
+        looks=args.looks,
+        log_bf_threshold=threshold,
+        alpha0=args.prior_alpha,
+        beta0=args.prior_beta,
+        n_simulations=args.simulations,
+        seed=args.seed,
+    )
+    print(f"stop rate                  : {result.stop_rate:.4f}")
+    print(f"mean looks at stop         : {result.mean_looks_at_stop:.2f}")
+    print(f"mean log BF at stop        : {result.mean_log_bf_at_stop:.3f}")
+    print(f"stop for H1 rate           : {result.decisive_for_h1_rate:.4f}")
+    print(f"stop for H0 rate           : {result.decisive_for_h0_rate:.4f}")
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -424,6 +488,8 @@ def main(argv: list[str] | None = None) -> int:
         "best": _cmd_best,
         "uplift": _cmd_uplift,
         "shrink": _cmd_shrink,
+        "bayes-factor": _cmd_bayes_factor,
+        "bf-stop": _cmd_bf_stop,
     }
     try:
         handlers[args.command](args)

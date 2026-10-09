@@ -33,6 +33,15 @@ from .uplift import (
     variants_vs_control,
 )
 
+
+from .cuped import (
+    CupedFit,
+    CupedResult,
+    cuped_adjust,
+    cuped_variance_reduction,
+    estimate_cuped_theta,
+)
+
 __all__ = [
     "ArmBestShare",
     "ArpuEvaluation",
@@ -60,6 +69,11 @@ __all__ = [
     "UpliftResult",
     "VariantData",
     "VariantVsControl",
+    "CupedFit",
+    "CupedResult",
+    "cuped_adjust",
+    "cuped_variance_reduction",
+    "estimate_cuped_theta",
     "__version__",
     "evaluate_variants",
     "expected_absolute_uplift",

@@ -191,3 +191,18 @@ python -m pytest tests -q
 ## License
 
 MIT — see [LICENSE](LICENSE).
+## CUPED covariate adjustment
+
+`cuped_adjust` implements Deng et al. (2013) Controlled-experiment Using
+Pre-Experiment Data. Given an outcome `Y` and a pre-period covariate `X`,
+it returns `Y - θ (X - mean(X))` with `θ = Cov(Y, X) / Var(X)`, preserving
+`E[Y]` while cutting variance by roughly `Corr(Y, X)²`.
+
+```python
+from bayes_ab_kit import cuped_adjust, cuped_variance_reduction
+
+result = cuped_adjust(y_outcome, x_pre_period)
+print(result.fit.theta, result.fit.variance_reduction)
+print(result.adjusted.mean(), result.var_adjusted)
+```
+

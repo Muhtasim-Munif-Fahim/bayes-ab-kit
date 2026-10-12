@@ -50,6 +50,9 @@ bayes-ab best --arm A:95:1000 --arm B:130:1000 --arm C:110:1000
 # P(variant > control), expected uplift, and credible intervals
 bayes-ab uplift --control A:95:1000 --arm B:130:1000 --arm C:110:1000
 
+# Sample ratio mismatch: is a 50.8/49.2 split on a 50/50 test a bug?
+bayes-ab srm --arm control:101600 --arm treatment:98400 --expected 0.5,0.5
+
 # Shrink noisy conversion arms toward a shared empirical-Bayes Beta prior
 bayes-ab shrink --arm noisy:8:20 --arm control:500:5000 --arm winner:2000:5000
 ```
@@ -119,6 +122,7 @@ value), so reports are reproducible.
 | `sampling` | Seeded generators and draw summaries |
 | `revenue` | Normal and Lognormal order-value models with analytic expected value |
 | `bayes_factor` | Exact Beta-Binomial BF10 vs a shared-rate null, Kass–Raftery labels, and sequential `|log BF|` early stopping |
+| `srm` | Sample ratio mismatch checks: chi-square, Dirichlet-multinomial BF10, and an anytime-valid sequential monitor |
 | `evaluation` | Joint conversion x revenue (ARPU) comparison |
 | `sequential` | A/A peeking simulations quantifying false-stop inflation |
 | `stopping` | Bayesian stopping plans: detection rate and expected sample size |
@@ -206,3 +210,30 @@ print(result.fit.theta, result.fit.variance_reduction)
 print(result.adjusted.mean(), result.var_adjusted)
 ```
 
+## Sample ratio mismatch (SRM)
+
+Check traffic allocation before you read any metric. A split that differs
+from the plan usually means an assignment or logging bug.
+`srm_check(counts, expected_shares)` runs:
+
+- a Pearson chi-square goodness-of-fit test (`p_value`, `mismatch` when
+  `p < alpha`, with `alpha = 0.001` by default), and
+- a Dirichlet-multinomial Bayes factor, `H1: p ~ Dirichlet(a)` against
+  `H0: p = planned shares`. It is exact and in closed form, and the result
+  also reports `posterior_mean_shares`.
+
+Under `H0`, BF10 evaluated on the growing counts is a test martingale.
+`sequential_srm_monitor(cumulative_counts)` uses this to raise an alarm the
+first time `BF10 >= 1/alpha`. Because of Ville's inequality, the false-alarm
+rate stays at or below `alpha` however often you look (Lindon & Malek, 2020).
+
+```python
+from bayes_ab_kit import srm_check, sequential_srm_monitor
+
+res = srm_check([101_600, 98_400], [0.5, 0.5], arms=["control", "treatment"])
+print(res.p_value, res.log_bf10, res.mismatch, res.bayesian_mismatch)
+
+daily = [[5_100, 4_900], [10_350, 9_650], [15_800, 14_200]]   # cumulative
+mon = sequential_srm_monitor(daily, alpha=0.001)
+print(mon.stopped_at, mon.anytime_p_values)
+```

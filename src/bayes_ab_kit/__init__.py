@@ -34,6 +34,14 @@ from .uplift import (
 )
 
 
+from .srm import (
+    SequentialSrmResult,
+    SrmResult,
+    sequential_srm_monitor,
+    srm_check,
+    srm_log_bayes_factor,
+)
+
 from .cuped import (
     CupedFit,
     CupedResult,
@@ -74,6 +82,11 @@ __all__ = [
     "cuped_adjust",
     "cuped_variance_reduction",
     "estimate_cuped_theta",
+    "SequentialSrmResult",
+    "SrmResult",
+    "sequential_srm_monitor",
+    "srm_check",
+    "srm_log_bayes_factor",
     "__version__",
     "evaluate_variants",
     "expected_absolute_uplift",

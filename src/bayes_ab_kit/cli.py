@@ -16,6 +16,7 @@ from .reporting import ComparisonBlock, ConversionReport, VariantLine, markdown_
 from .bayes_factor import bayes_factor_decision, simulate_bayes_factor_stopping
 from .rope import expected_loss_stop, rope_decision
 from .sequential import simulate_null_peeking
+from .srm import DEFAULT_SRM_ALPHA, srm_check
 from .uplift import variant_vs_control, variants_vs_control
 
 
@@ -159,6 +160,25 @@ def build_parser() -> argparse.ArgumentParser:
     bf_stop.add_argument("--seed", type=int, default=20261007)
     bf_stop.add_argument("--prior-alpha", type=float, default=1.0)
     bf_stop.add_argument("--prior-beta", type=float, default=1.0)
+
+    p_srm = sub.add_parser(
+        "srm",
+        help="sample ratio mismatch check (chi-square + Dirichlet Bayes factor)",
+    )
+    p_srm.add_argument(
+        "--arm",
+        action="append",
+        required=True,
+        metavar="NAME:UNITS",
+        help="arm as name:units assigned (repeat at least twice)",
+    )
+    p_srm.add_argument(
+        "--expected",
+        default=None,
+        help="comma-separated planned shares in --arm order (default: even split)",
+    )
+    p_srm.add_argument("--alpha", type=float, default=DEFAULT_SRM_ALPHA)
+    p_srm.add_argument("--prior-concentration", type=float, default=1.0)
 
     return parser
 
@@ -477,6 +497,47 @@ def _cmd_bf_stop(args: argparse.Namespace) -> None:
     print(f"stop for H1 rate           : {result.decisive_for_h1_rate:.4f}")
     print(f"stop for H0 rate           : {result.decisive_for_h0_rate:.4f}")
 
+def _cmd_srm(args: argparse.Namespace) -> None:
+    names: list[str] = []
+    counts: list[int] = []
+    for spec in args.arm:
+        parts = spec.rsplit(":", 1)
+        if len(parts) != 2 or not parts[0].strip():
+            raise ValueError("arm must be NAME:UNITS (for example A:5000)")
+        try:
+            units = int(parts[1])
+        except ValueError as exc:
+            raise ValueError("units must be an integer") from exc
+        names.append(parts[0].strip())
+        counts.append(units)
+    shares = None
+    if args.expected:
+        try:
+            shares = [float(x) for x in args.expected.split(",")]
+        except ValueError as exc:
+            raise ValueError("--expected must be comma-separated numbers") from exc
+    result = srm_check(
+        counts,
+        shares,
+        arms=names,
+        alpha=args.alpha,
+        prior_concentration=args.prior_concentration,
+    )
+    rows = [
+        [arm, str(n), f"{exp:.4f}", f"{obs:.4f}"]
+        for arm, n, exp, obs in zip(
+            result.arms, result.counts, result.expected_shares, result.observed_shares
+        )
+    ]
+    print(markdown_table(["arm", "units", "expected share", "observed share"], rows))
+    print()
+    print(f"chi-square ({result.dof} dof)".ljust(27) + f": {result.chi_square:.4f}")
+    print(f"{'p-value':<27}: {result.p_value:.4g}")
+    print(f"{'log BF10 (Dirichlet/plan)':<27}: {result.log_bf10:.4f}")
+    print(f"SRM (p < {result.alpha:g})".ljust(27) + f": {'yes' if result.mismatch else 'no'}")
+    print(f"{'SRM (BF10 >= 1/alpha)':<27}: {'yes' if result.bayesian_mismatch else 'no'}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -490,6 +551,7 @@ def main(argv: list[str] | None = None) -> int:
         "shrink": _cmd_shrink,
         "bayes-factor": _cmd_bayes_factor,
         "bf-stop": _cmd_bf_stop,
+        "srm": _cmd_srm,
     }
     try:
         handlers[args.command](args)

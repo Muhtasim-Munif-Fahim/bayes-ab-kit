@@ -55,6 +55,10 @@ bayes-ab srm --arm control:101600 --arm treatment:98400 --expected 0.5,0.5
 
 # Shrink noisy conversion arms toward a shared empirical-Bayes Beta prior
 bayes-ab shrink --arm noisy:8:20 --arm control:500:5000 --arm winner:2000:5000
+
+# Will collecting 2k more visitors per arm likely declare B > A?
+bayes-ab pps --conversions-a 95 --trials-a 1000 \
+             --conversions-b 130 --trials-b 1000 --remaining 2000
 ```
 
 The console script is provided by `pip install -e .`; alternatively run
@@ -76,6 +80,7 @@ from bayes_ab_kit import (
     hierarchical_beta_shrinkage,
     variant_vs_control,
     variants_vs_control,
+    predictive_probability_of_success,
 )
 
 a = BetaBinomialPosterior.from_counts(95, trials=1000)

@@ -50,6 +50,8 @@ from .cuped import (
     estimate_cuped_theta,
 )
 
+from .predictive import PredictiveSuccessResult, predictive_probability_of_success
+
 __all__ = [
     "ArmBestShare",
     "ArpuEvaluation",
@@ -79,8 +81,10 @@ __all__ = [
     "VariantVsControl",
     "CupedFit",
     "CupedResult",
+    "PredictiveSuccessResult",
     "cuped_adjust",
     "cuped_variance_reduction",
+    "predictive_probability_of_success",
     "estimate_cuped_theta",
     "SequentialSrmResult",
     "SrmResult",

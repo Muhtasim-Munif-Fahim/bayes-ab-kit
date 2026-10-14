@@ -17,6 +17,7 @@ from .bayes_factor import bayes_factor_decision, simulate_bayes_factor_stopping
 from .rope import expected_loss_stop, rope_decision
 from .sequential import simulate_null_peeking
 from .srm import DEFAULT_SRM_ALPHA, srm_check
+from .predictive import predictive_probability_of_success
 from .uplift import variant_vs_control, variants_vs_control
 
 
@@ -179,6 +180,30 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_srm.add_argument("--alpha", type=float, default=DEFAULT_SRM_ALPHA)
     p_srm.add_argument("--prior-concentration", type=float, default=1.0)
+
+
+    p_pps = sub.add_parser(
+        "pps",
+        help="posterior predictive probability of eventual B>A success",
+    )
+    p_pps.add_argument("--conversions-a", type=int, required=True)
+    p_pps.add_argument("--trials-a", type=int, required=True)
+    p_pps.add_argument("--conversions-b", type=int, required=True)
+    p_pps.add_argument("--trials-b", type=int, required=True)
+    p_pps.add_argument(
+        "--remaining",
+        type=int,
+        required=True,
+        help="planned additional trials per arm (use --remaining-b to override B)",
+    )
+    p_pps.add_argument("--remaining-b", type=int, default=None)
+    p_pps.add_argument("--threshold", type=float, default=0.95)
+    p_pps.add_argument("--futility-threshold", type=float, default=0.10)
+    p_pps.add_argument("--prior-alpha", type=float, default=1.0)
+    p_pps.add_argument("--prior-beta", type=float, default=1.0)
+    p_pps.add_argument("--sims", type=int, default=4000)
+    p_pps.add_argument("--decision-samples", type=int, default=4000)
+    p_pps.add_argument("--seed", type=int, default=20261014)
 
     return parser
 
@@ -497,6 +522,32 @@ def _cmd_bf_stop(args: argparse.Namespace) -> None:
     print(f"stop for H1 rate           : {result.decisive_for_h1_rate:.4f}")
     print(f"stop for H0 rate           : {result.decisive_for_h0_rate:.4f}")
 
+
+def _cmd_pps(args: argparse.Namespace) -> None:
+    result = predictive_probability_of_success(
+        args.conversions_a,
+        args.trials_a,
+        args.conversions_b,
+        args.trials_b,
+        remaining_a=args.remaining,
+        remaining_b=args.remaining_b,
+        threshold=args.threshold,
+        futility_threshold=args.futility_threshold,
+        alpha0=args.prior_alpha,
+        beta0=args.prior_beta,
+        n_simulations=args.sims,
+        decision_samples=args.decision_samples,
+        seed=args.seed,
+    )
+    print(f"{'predictive P(success)':<27}: {result.predictive_probability:.4f}")
+    print(f"{'mean final P(B>A)':<27}: {result.mean_final_prob_b_beats_a:.4f}")
+    print(f"{'already success':<27}: {'yes' if result.prob_already_success else 'no'}")
+    print(f"{'futility probability':<27}: {result.futility_probability:.4f}")
+    print(f"{'continue recommended':<27}: {'yes' if result.continue_recommended else 'no'}")
+    print(f"{'remaining A / B':<27}: {result.remaining_a} / {result.remaining_b}")
+    print(f"{'threshold':<27}: {result.threshold:g}")
+
+
 def _cmd_srm(args: argparse.Namespace) -> None:
     names: list[str] = []
     counts: list[int] = []
@@ -552,6 +603,7 @@ def main(argv: list[str] | None = None) -> int:
         "bayes-factor": _cmd_bayes_factor,
         "bf-stop": _cmd_bf_stop,
         "srm": _cmd_srm,
+        "pps": _cmd_pps,
     }
     try:
         handlers[args.command](args)

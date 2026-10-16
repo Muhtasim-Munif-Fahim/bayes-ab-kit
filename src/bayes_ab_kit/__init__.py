@@ -52,7 +52,20 @@ from .cuped import (
 
 from .predictive import PredictiveSuccessResult, predictive_probability_of_success
 
+from .rates import (
+    GammaPoissonPosterior,
+    RateComparisonResult,
+    compare_rates,
+    prob_rate_b_exceeds_a,
+    rate_ratio_interval,
+)
+
 __all__ = [
+    "GammaPoissonPosterior",
+    "RateComparisonResult",
+    "compare_rates",
+    "prob_rate_b_exceeds_a",
+    "rate_ratio_interval",
     "ArmBestShare",
     "ArpuEvaluation",
     "simulate_bayes_factor_stopping",

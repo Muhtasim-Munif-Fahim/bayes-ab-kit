@@ -18,6 +18,7 @@ from .rope import expected_loss_stop, rope_decision
 from .sequential import simulate_null_peeking
 from .srm import DEFAULT_SRM_ALPHA, srm_check
 from .predictive import predictive_probability_of_success
+from .rates import compare_rates
 from .uplift import variant_vs_control, variants_vs_control
 
 
@@ -204,6 +205,26 @@ def build_parser() -> argparse.ArgumentParser:
     p_pps.add_argument("--sims", type=int, default=4000)
     p_pps.add_argument("--decision-samples", type=int, default=4000)
     p_pps.add_argument("--seed", type=int, default=20261014)
+
+    p_rates = sub.add_parser(
+        "rates",
+        help="Gamma-Poisson comparison of event rates (events per exposure)",
+    )
+    p_rates.add_argument("--events-a", type=int, required=True)
+    p_rates.add_argument("--exposure-a", type=float, required=True)
+    p_rates.add_argument("--events-b", type=int, required=True)
+    p_rates.add_argument("--exposure-b", type=float, required=True)
+    p_rates.add_argument(
+        "--lower-is-better",
+        action="store_true",
+        help="treat fewer events as better (errors, crashes, churn)",
+    )
+    p_rates.add_argument("--prior-shape", type=float, default=0.5)
+    p_rates.add_argument("--prior-rate", type=float, default=1e-6)
+    p_rates.add_argument("--ci", type=float, default=0.95)
+    p_rates.add_argument("--loss-threshold", type=float, default=None)
+    p_rates.add_argument("--samples", type=int, default=50_000)
+    p_rates.add_argument("--seed", type=int, default=20261016)
 
     return parser
 
@@ -548,6 +569,50 @@ def _cmd_pps(args: argparse.Namespace) -> None:
     print(f"{'threshold':<27}: {result.threshold:g}")
 
 
+def _cmd_rates(args: argparse.Namespace) -> None:
+    result = compare_rates(
+        args.events_a,
+        args.exposure_a,
+        args.events_b,
+        args.exposure_b,
+        shape0=args.prior_shape,
+        rate0=args.prior_rate,
+        higher_is_better=not args.lower_is_better,
+        ci=args.ci,
+        loss_threshold=args.loss_threshold,
+        n_samples=args.samples,
+        seed=args.seed,
+    )
+    pct = f"{result.ci:.0%}"
+    rows = [
+        [
+            "A",
+            str(result.events_a),
+            f"{result.exposure_a:g}",
+            f"{result.rate_a_mean:.6g}",
+            f"[{result.rate_a_interval[0]:.6g}, {result.rate_a_interval[1]:.6g}]",
+        ],
+        [
+            "B",
+            str(result.events_b),
+            f"{result.exposure_b:g}",
+            f"{result.rate_b_mean:.6g}",
+            f"[{result.rate_b_interval[0]:.6g}, {result.rate_b_interval[1]:.6g}]",
+        ],
+    ]
+    print(markdown_table(["arm", "events", "exposure", "rate mean", f"{pct} CrI"], rows))
+    print()
+    direction = "higher" if result.higher_is_better else "lower"
+    print(f"{'P(B better)':<27}: {result.prob_b_better:.4f}  ({direction} rate is better)")
+    lo, hi = result.rate_ratio_interval
+    print(f"{'rate ratio B/A (median)':<27}: {result.rate_ratio_median:.4f}")
+    print(f"rate ratio {pct} CrI".ljust(27) + f": [{lo:.4f}, {hi:.4f}]")
+    print(f"{'expected loss choose A':<27}: {result.expected_loss_choose_a:.6g}")
+    print(f"{'expected loss choose B':<27}: {result.expected_loss_choose_b:.6g}")
+    if result.loss_threshold is not None:
+        print(f"{'winner (loss <= threshold)':<27}: {result.winner or 'none yet'}")
+
+
 def _cmd_srm(args: argparse.Namespace) -> None:
     names: list[str] = []
     counts: list[int] = []
@@ -604,6 +669,7 @@ def main(argv: list[str] | None = None) -> int:
         "bf-stop": _cmd_bf_stop,
         "srm": _cmd_srm,
         "pps": _cmd_pps,
+        "rates": _cmd_rates,
     }
     try:
         handlers[args.command](args)

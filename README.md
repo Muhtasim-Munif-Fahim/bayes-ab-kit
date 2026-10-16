@@ -59,6 +59,12 @@ bayes-ab shrink --arm noisy:8:20 --arm control:500:5000 --arm winner:2000:5000
 # Will collecting 2k more visitors per arm likely declare B > A?
 bayes-ab pps --conversions-a 95 --trials-a 1000 \
              --conversions-b 130 --trials-b 1000 --remaining 2000
+
+# Count/rate metrics (events per exposure): orders per user-day, crashes per session
+bayes-ab rates --events-a 40 --exposure-a 1000 --events-b 70 --exposure-b 1000 \
+               --loss-threshold 0.001
+bayes-ab rates --events-a 12 --exposure-a 5000 --events-b 21 --exposure-b 5000 \
+               --lower-is-better   # fewer errors is better
 ```
 
 The console script is provided by `pip install -e .`; alternatively run
@@ -241,4 +247,31 @@ print(res.p_value, res.log_bf10, res.mismatch, res.bayesian_mismatch)
 daily = [[5_100, 4_900], [10_350, 9_650], [15_800, 14_200]]   # cumulative
 mon = sequential_srm_monitor(daily, alpha=0.001)
 print(mon.stopped_at, mon.anytime_p_values)
+```
+
+## Count and rate metrics (Gamma-Poisson)
+
+`compare_rates` handles metrics that are event counts over an exposure
+(purchases per user-day, crashes per 1,000 sessions). Each arm gets a
+conjugate `Gamma(shape0 + events, rate0 + exposure)` posterior
+(`GammaPoissonPosterior`, default Jeffreys-like `shape0=0.5` and a vague
+`rate0=1e-6`).
+
+* `P(rate_B > rate_A)` is exact: `G_b / (G_a + G_b)` is Beta-distributed, so
+  the probability is a regularized incomplete beta (`prob_rate_b_exceeds_a`).
+* The rate ratio `rate_B / rate_A` is a scaled beta-prime variable; its
+  median and credible interval come from Beta quantiles (`rate_ratio_interval`).
+* Expected loss of choosing each arm (in rate units) is Monte Carlo from
+  seeded draws; set `loss_threshold` to get a `winner` once one arm's loss is
+  small enough.
+* `higher_is_better=False` (CLI `--lower-is-better`) flips the orientation for
+  "bad" counts such as errors or churn events.
+* `GammaPoissonPosterior.predictive_events(exposure)` returns the negative
+  binomial posterior predictive for future counts.
+
+```python
+from bayes_ab_kit import compare_rates
+
+res = compare_rates(40, 1000.0, 70, 1000.0, loss_threshold=1e-3)
+res.prob_b_better, res.rate_ratio_interval, res.winner
 ```

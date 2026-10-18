@@ -60,7 +60,26 @@ from .rates import (
     rate_ratio_interval,
 )
 
+from .msprt import (
+    MsprtLook,
+    MsprtResult,
+    MsprtSimulationResult,
+    msprt_log_likelihood_ratio,
+    msprt_monitor,
+    msprt_proportions,
+    msprt_radius,
+    simulate_msprt_false_positives,
+)
+
 __all__ = [
+    "MsprtLook",
+    "MsprtResult",
+    "MsprtSimulationResult",
+    "msprt_log_likelihood_ratio",
+    "msprt_monitor",
+    "msprt_proportions",
+    "msprt_radius",
+    "simulate_msprt_false_positives",
     "GammaPoissonPosterior",
     "RateComparisonResult",
     "compare_rates",

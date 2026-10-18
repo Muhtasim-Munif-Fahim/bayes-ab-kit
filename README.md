@@ -65,6 +65,10 @@ bayes-ab rates --events-a 40 --exposure-a 1000 --events-b 70 --exposure-b 1000 \
                --loss-threshold 0.001
 bayes-ab rates --events-a 12 --exposure-a 5000 --events-b 21 --exposure-b 5000 \
                --lower-is-better   # fewer errors is better
+
+# Always-valid sequential test: peek after every batch without inflating alpha
+bayes-ab msprt --look 48:500:62:500 --look 98:1000:131:1000 --look 150:1500:205:1500
+bayes-ab msprt --simulate --rate 0.10 --per-look 500 --looks 20
 ```
 
 The console script is provided by `pip install -e .`; alternatively run
@@ -135,6 +139,7 @@ value), so reports are reproducible.
 | `bayes_factor` | Exact Beta-Binomial BF10 vs a shared-rate null, Kass–Raftery labels, and sequential `|log BF|` early stopping |
 | `srm` | Sample ratio mismatch checks: chi-square, Dirichlet-multinomial BF10, and an anytime-valid sequential monitor |
 | `evaluation` | Joint conversion x revenue (ARPU) comparison |
+| `msprt` | Mixture SPRT: always-valid p-values, confidence sequences, and A/A peeking simulations |
 | `sequential` | A/A peeking simulations quantifying false-stop inflation |
 | `stopping` | Bayesian stopping plans: detection rate and expected sample size |
 | `power` | Analytic sample-size planning plus simulated power curves |
@@ -248,6 +253,44 @@ daily = [[5_100, 4_900], [10_350, 9_650], [15_800, 14_200]]   # cumulative
 mon = sequential_srm_monitor(daily, alpha=0.001)
 print(mon.stopped_at, mon.anytime_p_values)
 ```
+
+## Always-valid sequential testing (mSPRT)
+
+`sequential.simulate_null_peeking` shows how far a fixed-horizon p-value's
+false-positive rate climbs when you check it after every batch. The mixture
+sequential probability ratio test (Robbins 1970; Johari, Koomen, Pekelis &
+Walsh, *Always Valid Inference*, 2022) is the fix behind most commercial
+"peek-any-time" dashboards. With an approximately normal lift estimate
+`delta_hat ~ N(theta, V)` and a normal mixing prior `theta ~ N(theta0, tau^2)`,
+the mixture likelihood ratio has a closed form and is a martingale under the
+null. Ville's inequality then bounds the chance it *ever* reaches `1/alpha` by
+`alpha`.
+
+- `msprt_monitor(deltas, variances, tau=...)` is the generic version for any
+  metric with a normal estimate (means, CUPED-adjusted means, ...).
+- `msprt_proportions(cumulative)` takes running
+  `(conversions_a, trials_a, conversions_b, trials_b)` totals.
+- Each look reports the always-valid p-value
+  `min(1, 1 / max_s Lambda_s)` and a confidence-sequence interval. The
+  intervals are intersected over looks and cover the true lift at every look
+  simultaneously with probability `>= 1 - alpha`.
+- `simulate_msprt_false_positives` compares mSPRT with naive repeated
+  z-tests on A/A data.
+
+```python
+from bayes_ab_kit import msprt_proportions, simulate_msprt_false_positives
+
+looks = [(48, 500, 62, 500), (98, 1000, 131, 1000), (150, 1500, 205, 1500), (199, 2000, 281, 2000)]
+res = msprt_proportions(looks, alpha=0.05, tau=0.02)
+print(res.stopped_at, res.p_value, res.confidence_interval)
+
+sim = simulate_msprt_false_positives(rate=0.10, per_look=500, looks=20)
+print(sim.naive_false_positive_rate, sim.msprt_false_positive_rate)  # about 0.25 vs about 0.02
+```
+
+`tau` is the size of lift the test is tuned to find quickly, not an
+assumption validity depends on: any `tau > 0` controls `alpha`. The price of
+peeking freely is a wider interval than a single fixed-horizon look would give.
 
 ## Count and rate metrics (Gamma-Poisson)
 

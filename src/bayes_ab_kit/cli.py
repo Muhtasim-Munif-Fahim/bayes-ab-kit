@@ -9,6 +9,7 @@ from pathlib import Path
 from . import __version__
 from .decisions import superiority_decision
 from .hierarchical import hierarchical_beta_shrinkage
+from .msprt import msprt_proportions, simulate_msprt_false_positives
 from .multiarms import probability_of_being_best
 from .power import required_sample_size
 from .posteriors import BetaBinomialPosterior
@@ -225,6 +226,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_rates.add_argument("--loss-threshold", type=float, default=None)
     p_rates.add_argument("--samples", type=int, default=50_000)
     p_rates.add_argument("--seed", type=int, default=20261016)
+
+    p_msprt = sub.add_parser(
+        "msprt",
+        help="always-valid mSPRT p-values and confidence sequence over cumulative looks",
+    )
+    p_msprt.add_argument(
+        "--look",
+        action="append",
+        default=[],
+        metavar="CA:NA:CB:NB",
+        help="cumulative conversions/trials for A and B at one look (repeat, in order)",
+    )
+    p_msprt.add_argument("--alpha", type=float, default=0.05)
+    p_msprt.add_argument("--tau", type=float, default=0.02, help="mixing sd on the absolute lift")
+    p_msprt.add_argument("--theta0", type=float, default=0.0, help="null value of p_B - p_A")
+    p_msprt.add_argument(
+        "--simulate",
+        action="store_true",
+        help="instead, simulate A/A false positives of mSPRT vs naive peeking",
+    )
+    p_msprt.add_argument("--rate", type=float, default=0.10)
+    p_msprt.add_argument("--per-look", type=int, default=500)
+    p_msprt.add_argument("--looks", type=int, default=20)
+    p_msprt.add_argument("--sims", type=int, default=2000)
+    p_msprt.add_argument("--seed", type=int, default=20261018)
 
     return parser
 
@@ -654,6 +680,56 @@ def _cmd_srm(args: argparse.Namespace) -> None:
     print(f"{'SRM (BF10 >= 1/alpha)':<27}: {'yes' if result.bayesian_mismatch else 'no'}")
 
 
+def _cmd_msprt(args: argparse.Namespace) -> None:
+    if args.simulate:
+        sim = simulate_msprt_false_positives(
+            rate=args.rate,
+            per_look=args.per_look,
+            looks=args.looks,
+            alpha=args.alpha,
+            tau=args.tau,
+            simulations=args.sims,
+            seed=args.seed,
+        )
+        print(
+            f"A/A at rate {sim.rate:g}, {sim.looks} looks of {sim.per_look} per arm, "
+            f"{sim.simulations} simulations"
+        )
+        print(f"{'naive z-test peeking FPR':<27}: {sim.naive_false_positive_rate:.4f}")
+        print(f"{'mSPRT always-valid FPR':<27}: {sim.msprt_false_positive_rate:.4f}  (alpha {sim.alpha:g})")
+        return
+    if not args.look:
+        raise ValueError("pass at least one --look CA:NA:CB:NB (or --simulate)")
+    rows_in = []
+    for spec in args.look:
+        parts = spec.split(":")
+        if len(parts) != 4:
+            raise ValueError("look must be CA:NA:CB:NB (for example 48:500:62:500)")
+        try:
+            rows_in.append(tuple(int(x) for x in parts))
+        except ValueError as exc:
+            raise ValueError("look counts must be integers") from exc
+    result = msprt_proportions(rows_in, alpha=args.alpha, tau=args.tau, theta0=args.theta0)
+    pct = f"{(1 - result.alpha) * 100:g}%"
+    rows = [
+        [
+            str(look.look + 1),
+            f"{look.delta:+.4f}",
+            f"{look.std_error:.4f}",
+            f"{look.p_value:.4g}",
+            f"[{look.ci_low:+.4f}, {look.ci_high:+.4f}]",
+        ]
+        for look in result.looks
+    ]
+    print(markdown_table(["look", "p_B - p_A", "SE", "always-valid p", f"{pct} conf. sequence"], rows))
+    print()
+    print(f"{'mixing tau':<27}: {result.tau:g}")
+    if result.stopped_at is None:
+        print(f"{'decision':<27}: keep collecting (p > {result.alpha:g})")
+    else:
+        print(f"{'decision':<27}: reject p_B - p_A = {result.theta0:g} at look {result.stopped_at + 1}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -670,6 +746,7 @@ def main(argv: list[str] | None = None) -> int:
         "srm": _cmd_srm,
         "pps": _cmd_pps,
         "rates": _cmd_rates,
+        "msprt": _cmd_msprt,
     }
     try:
         handlers[args.command](args)

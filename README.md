@@ -69,6 +69,9 @@ bayes-ab rates --events-a 12 --exposure-a 5000 --events-b 21 --exposure-b 5000 \
 # Always-valid sequential test: peek after every batch without inflating alpha
 bayes-ab msprt --look 48:500:62:500 --look 98:1000:131:1000 --look 150:1500:205:1500
 bayes-ab msprt --simulate --rate 0.10 --per-look 500 --looks 20
+
+# Ratio metric (clicks/views, revenue/session) per randomized user, delta-method SE
+bayes-ab ratio --data users.csv --control A   # columns: arm,numerator,denominator
 ```
 
 The console script is provided by `pip install -e .`; alternatively run
@@ -139,6 +142,7 @@ value), so reports are reproducible.
 | `bayes_factor` | Exact Beta-Binomial BF10 vs a shared-rate null, Kass–Raftery labels, and sequential `|log BF|` early stopping |
 | `srm` | Sample ratio mismatch checks: chi-square, Dirichlet-multinomial BF10, and an anytime-valid sequential monitor |
 | `evaluation` | Joint conversion x revenue (ARPU) comparison |
+| `ratio` | Ratio metrics (CTR, revenue per session) with delta-method variance, design effect vs naive pooling, and A/B comparison |
 | `msprt` | Mixture SPRT: always-valid p-values, confidence sequences, and A/A peeking simulations |
 | `sequential` | A/A peeking simulations quantifying false-stop inflation |
 | `stopping` | Bayesian stopping plans: detection rate and expected sample size |
@@ -317,4 +321,33 @@ from bayes_ab_kit import compare_rates
 
 res = compare_rates(40, 1000.0, 70, 1000.0, loss_threshold=1e-3)
 res.prob_b_better, res.rate_ratio_interval, res.winner
+```
+
+## Ratio metrics (delta method)
+
+Click-through rate (clicks / page views) and revenue per session are
+**ratio metrics**: the denominator is not the randomization unit. If you
+pool every page view as an independent Bernoulli trial, you ignore the
+correlation between views from the same user. That standard error is too
+small, so A/A tests come out "significant" far more often than `alpha`.
+`ratio_summary` uses per-user numerators and denominators and the
+delta-method variance (Deng, Knoblich & Lu, 2018):
+
+    Var(r) ~ (1/n) [ s_xx/mu_y^2 - 2 mu_x s_xy/mu_y^3 + mu_x^2 s_yy/mu_y^4 ]
+
+* `ratio_summary(x, y)` takes raw per-unit arrays. `ratio_summary_from_moments(n, Σx, Σy, Σx², Σy², Σxy)` takes aggregates from SQL.
+* `design_effect` reports how many times the naive pooled variance understates the truth.
+* `compare_ratio_metrics(a, b)` reports:
+  * the difference with its CI and p-value;
+  * the relative lift (delta method on `log r`) with its CI;
+  * the naive p-value, for contrast;
+  * the flat-prior posterior `P(B better)` and closed-form expected losses.
+
+```python
+from bayes_ab_kit import compare_ratio_metrics, ratio_summary
+
+a = ratio_summary(clicks_a, views_a)   # one entry per user
+b = ratio_summary(clicks_b, views_b)
+res = compare_ratio_metrics(a, b)
+a.design_effect, res.p_value, res.naive_p_value, res.relative_lift_interval
 ```

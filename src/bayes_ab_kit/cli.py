@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import math
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from .sequential import simulate_null_peeking
 from .srm import DEFAULT_SRM_ALPHA, srm_check
 from .predictive import predictive_probability_of_success
 from .rates import compare_rates
+from .ratio import compare_ratio_metrics, ratio_summary
 from .uplift import variant_vs_control, variants_vs_control
 
 
@@ -251,6 +253,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_msprt.add_argument("--looks", type=int, default=20)
     p_msprt.add_argument("--sims", type=int, default=2000)
     p_msprt.add_argument("--seed", type=int, default=20261018)
+
+    p_ratio = sub.add_parser(
+        "ratio",
+        help="ratio metric (e.g. clicks/views per user) with delta-method variance",
+    )
+    p_ratio.add_argument(
+        "--data",
+        required=True,
+        help="CSV with one row per randomization unit: arm,numerator,denominator",
+    )
+    p_ratio.add_argument("--control", default="A", help="control arm label (default A)")
+    p_ratio.add_argument("--treatment", default=None, help="treatment arm label (default: the other arm)")
+    p_ratio.add_argument("--ci", type=float, default=0.95)
+    p_ratio.add_argument("--lower-is-better", action="store_true")
 
     return parser
 
@@ -730,6 +746,63 @@ def _cmd_msprt(args: argparse.Namespace) -> None:
         print(f"{'decision':<27}: reject p_B - p_A = {result.theta0:g} at look {result.stopped_at + 1}")
 
 
+def _read_ratio_csv(path: str) -> dict[str, tuple[list[float], list[float]]]:
+    try:
+        with open(path, newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            missing = {"arm", "numerator", "denominator"} - set(reader.fieldnames or [])
+            if missing:
+                raise ValueError(f"{path} is missing column(s): {', '.join(sorted(missing))}")
+            arms: dict[str, tuple[list[float], list[float]]] = {}
+            for line, row in enumerate(reader, start=2):
+                try:
+                    x, y = float(row["numerator"]), float(row["denominator"])
+                except (TypeError, ValueError):
+                    raise ValueError(f"{path} line {line}: numerator/denominator must be numbers") from None
+                xs, ys = arms.setdefault(row["arm"], ([], []))
+                xs.append(x)
+                ys.append(y)
+    except OSError as exc:
+        raise ValueError(f"could not read {path}: {exc}") from None
+    return arms
+
+
+def _cmd_ratio(args: argparse.Namespace) -> None:
+    arms = _read_ratio_csv(args.data)
+    if args.control not in arms:
+        raise ValueError(f"control arm {args.control!r} not found; arms: {sorted(arms)}")
+    others = [k for k in arms if k != args.control]
+    treatment = args.treatment
+    if treatment is None:
+        if len(others) != 1:
+            raise ValueError(f"pass --treatment; arms other than control: {sorted(others)}")
+        treatment = others[0]
+    if treatment not in arms or treatment == args.control:
+        raise ValueError(f"treatment arm {treatment!r} not found or equals control")
+    a = ratio_summary(*arms[args.control])
+    b = ratio_summary(*arms[treatment])
+    res = compare_ratio_metrics(a, b, ci=args.ci, higher_is_better=not args.lower_is_better)
+    pct = f"{res.ci:.0%}"
+    rows = []
+    for label, s in ((args.control, a), (treatment, b)):
+        deff = "n/a" if s.design_effect is None else f"{s.design_effect:.2f}"
+        rows.append([label, str(s.n), f"{s.sum_numerator:g}", f"{s.sum_denominator:g}",
+                     f"{s.ratio:.6g}", f"{s.se:.4g}", deff])
+    print(markdown_table(["arm", "units", "numerator", "denominator", "ratio", "delta SE", "design effect"], rows))
+    print()
+    lo, hi = res.difference_interval
+    print(f"{'difference B - A':<27}: {res.difference:+.6g}  {pct} CI [{lo:+.6g}, {hi:+.6g}]")
+    llo, lhi = res.relative_lift_interval
+    print(f"{'relative lift':<27}: {res.relative_lift:+.2%}  {pct} CI [{llo:+.2%}, {lhi:+.2%}]")
+    print(f"{'p-value (delta method)':<27}: {res.p_value:.4g}")
+    if res.naive_p_value is not None:
+        print(f"{'p-value (naive pooled)':<27}: {res.naive_p_value:.4g}  (ignores within-unit correlation)")
+    direction = "higher" if res.higher_is_better else "lower"
+    print(f"{'P(B better)':<27}: {res.prob_b_better:.4f}  ({direction} is better)")
+    print(f"{'expected loss choose A':<27}: {res.expected_loss_choose_a:.6g}")
+    print(f"{'expected loss choose B':<27}: {res.expected_loss_choose_b:.6g}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -747,6 +820,7 @@ def main(argv: list[str] | None = None) -> int:
         "pps": _cmd_pps,
         "rates": _cmd_rates,
         "msprt": _cmd_msprt,
+        "ratio": _cmd_ratio,
     }
     try:
         handlers[args.command](args)

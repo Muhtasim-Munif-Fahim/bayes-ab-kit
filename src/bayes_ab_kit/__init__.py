@@ -71,7 +71,20 @@ from .msprt import (
     simulate_msprt_false_positives,
 )
 
+from .ratio import (
+    RatioComparisonResult,
+    RatioSummary,
+    compare_ratio_metrics,
+    ratio_summary,
+    ratio_summary_from_moments,
+)
+
 __all__ = [
+    "RatioComparisonResult",
+    "RatioSummary",
+    "compare_ratio_metrics",
+    "ratio_summary",
+    "ratio_summary_from_moments",
     "MsprtLook",
     "MsprtResult",
     "MsprtSimulationResult",

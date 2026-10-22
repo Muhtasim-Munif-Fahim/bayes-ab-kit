@@ -143,6 +143,7 @@ value), so reports are reproducible.
 | `srm` | Sample ratio mismatch checks: chi-square, Dirichlet-multinomial BF10, and an anytime-valid sequential monitor |
 | `evaluation` | Joint conversion x revenue (ARPU) comparison |
 | `ratio` | Ratio metrics (CTR, revenue per session) with delta-method variance, design effect vs naive pooling, and A/B comparison |
+| `bootstrap` | Bayesian bootstrap (Dirichlet-weighted) posteriors and A/B comparison for medians, quantiles, trimmed means, std, ratios or any weighted statistic |
 | `msprt` | Mixture SPRT: always-valid p-values, confidence sequences, and A/A peeking simulations |
 | `sequential` | A/A peeking simulations quantifying false-stop inflation |
 | `stopping` | Bayesian stopping plans: detection rate and expected sample size |
@@ -350,4 +351,31 @@ a = ratio_summary(clicks_a, views_a)   # one entry per user
 b = ratio_summary(clicks_b, views_b)
 res = compare_ratio_metrics(a, b)
 a.design_effect, res.p_value, res.naive_p_value, res.relative_lift_interval
+```
+
+## Bayesian bootstrap (medians, quantiles, any metric)
+
+Conjugate models cover conversions, counts and revenue. Decision metrics such as **median order value**, **p90 latency** or a **trimmed mean** have no convenient likelihood. The Bayesian bootstrap (Rubin, 1981) puts a flat Dirichlet prior on the probabilities of the observed values. Each posterior draw reweights the sample with `w ~ Dirichlet(1, …, 1)` and evaluates the weighted statistic. No parametric assumption is needed.
+
+* `bayesian_bootstrap(x, statistic)` supports:
+  * `"mean"` (exact: posterior variance `Σ(x − x̄)² / (n(n+1))`);
+  * `"median"`, `"quantile"` (with `q=`) and `"trimmed_mean"` (with `trim=`), which use the weighted inverse-CDF definitions; uniform weights reproduce `numpy.quantile(method="inverted_cdf")` and `scipy.stats.trim_mean`;
+  * `"std"`;
+  * any callable `f(values, weights)`.
+  
+  Draws are vectorised and generated in chunks.
+* `bayesian_bootstrap_ratio(x, y)` gives the posterior of `Σx / Σy` with the same unit weights on numerator and denominator, for example clicks / views per user.
+* `compare_bayesian_bootstrap(a, b, statistic)` reports the `B − A` difference, the relative lift with credible intervals, `P(B better)`, and the expected loss of each choice. Use `higher_is_better=False` for latency-type metrics.
+
+```python
+from bayes_ab_kit import bayesian_bootstrap, compare_bayesian_bootstrap
+
+post = bayesian_bootstrap(order_values, "median", n_draws=4000, seed=1)
+post.point_estimate, post.interval
+res = compare_bayesian_bootstrap(latency_a, latency_b, "quantile", q=0.9, higher_is_better=False, seed=7)
+res.prob_b_better, res.difference_interval, res.expected_loss_choose_b
+```
+
+```bash
+bayes-ab bootstrap --data values.csv --statistic quantile --q 0.9 --lower-is-better   # CSV: arm,value
 ```

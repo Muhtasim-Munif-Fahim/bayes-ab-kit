@@ -268,6 +268,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_ratio.add_argument("--ci", type=float, default=0.95)
     p_ratio.add_argument("--lower-is-better", action="store_true")
 
+    p_boot = sub.add_parser(
+        "bootstrap",
+        help="Bayesian bootstrap A/B comparison of a median, quantile, trimmed mean, std or mean",
+    )
+    p_boot.add_argument("--data", required=True, help="CSV with one row per unit: arm,value")
+    p_boot.add_argument("--control", default="A", help="control arm label (default A)")
+    p_boot.add_argument("--treatment", default=None, help="treatment arm label (default: the other arm)")
+    p_boot.add_argument("--statistic", choices=["mean", "median", "quantile", "trimmed_mean", "std"],
+                        default="median")
+    p_boot.add_argument("--q", type=float, default=0.9, help="quantile level for --statistic quantile (default 0.9)")
+    p_boot.add_argument("--trim", type=float, default=0.1, help="tail fraction for trimmed_mean (default 0.1)")
+    p_boot.add_argument("--draws", type=int, default=4000)
+    p_boot.add_argument("--ci", type=float, default=0.95)
+    p_boot.add_argument("--seed", type=int, default=20261022)
+    p_boot.add_argument("--lower-is-better", action="store_true")
+
     return parser
 
 
@@ -803,6 +819,62 @@ def _cmd_ratio(args: argparse.Namespace) -> None:
     print(f"{'expected loss choose B':<27}: {res.expected_loss_choose_b:.6g}")
 
 
+def _read_value_csv(path: str) -> dict[str, list[float]]:
+    try:
+        with open(path, newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            missing = {"arm", "value"} - set(reader.fieldnames or [])
+            if missing:
+                raise ValueError(f"{path} is missing column(s): {', '.join(sorted(missing))}")
+            arms: dict[str, list[float]] = {}
+            for line, row in enumerate(reader, start=2):
+                try:
+                    v = float(row["value"])
+                except (TypeError, ValueError):
+                    raise ValueError(f"{path} line {line}: value must be a number") from None
+                arms.setdefault(row["arm"], []).append(v)
+    except OSError as exc:
+        raise ValueError(f"could not read {path}: {exc}") from None
+    return arms
+
+
+def _cmd_bootstrap(args: argparse.Namespace) -> None:
+    from .bootstrap import compare_bayesian_bootstrap
+
+    arms = _read_value_csv(args.data)
+    if args.control not in arms:
+        raise ValueError(f"control arm {args.control!r} not found; arms: {sorted(arms)}")
+    others = [k for k in arms if k != args.control]
+    treatment = args.treatment
+    if treatment is None:
+        if len(others) != 1:
+            raise ValueError(f"pass --treatment; arms other than control: {sorted(others)}")
+        treatment = others[0]
+    if treatment not in arms or treatment == args.control:
+        raise ValueError(f"treatment arm {treatment!r} not found or equals control")
+    res = compare_bayesian_bootstrap(
+        arms[args.control], arms[treatment], args.statistic, q=args.q, trim=args.trim,
+        n_draws=args.draws, ci=args.ci, seed=args.seed, higher_is_better=not args.lower_is_better,
+    )
+    pct = f"{res.ci:.0%}"
+    rows = []
+    for label, post in ((args.control, res.a), (treatment, res.b)):
+        lo, hi = post.interval
+        rows.append([label, str(post.n), f"{post.point_estimate:.6g}", f"{post.sd:.4g}", f"[{lo:.6g}, {hi:.6g}]"])
+    print(f"Bayesian bootstrap: {res.statistic} ({args.draws} Dirichlet draws)")
+    print(markdown_table(["arm", "units", "estimate", "posterior SD", f"{pct} CrI"], rows))
+    print()
+    lo, hi = res.difference_interval
+    print(f"{'difference B - A':<24}: {res.difference:+.6g}  {pct} CrI [{lo:+.6g}, {hi:+.6g}]")
+    if res.relative_lift is not None:
+        llo, lhi = res.relative_lift_interval
+        print(f"{'relative lift':<24}: {res.relative_lift:+.2%}  {pct} CrI [{llo:+.2%}, {lhi:+.2%}]")
+    direction = "higher" if res.higher_is_better else "lower"
+    print(f"{'P(B better)':<24}: {res.prob_b_better:.4f}  ({direction} is better)")
+    print(f"{'expected loss choose A':<24}: {res.expected_loss_choose_a:.6g}")
+    print(f"{'expected loss choose B':<24}: {res.expected_loss_choose_b:.6g}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -821,6 +893,7 @@ def main(argv: list[str] | None = None) -> int:
         "rates": _cmd_rates,
         "msprt": _cmd_msprt,
         "ratio": _cmd_ratio,
+        "bootstrap": _cmd_bootstrap,
     }
     try:
         handlers[args.command](args)

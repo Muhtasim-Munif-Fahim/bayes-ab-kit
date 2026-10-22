@@ -71,6 +71,15 @@ from .msprt import (
     simulate_msprt_false_positives,
 )
 
+from .bootstrap import (
+    STATISTICS as BOOTSTRAP_STATISTICS,
+    BootstrapComparison,
+    BootstrapPosterior,
+    bayesian_bootstrap,
+    bayesian_bootstrap_ratio,
+    compare_bayesian_bootstrap,
+    weighted_quantile,
+)
 from .ratio import (
     RatioComparisonResult,
     RatioSummary,
@@ -80,6 +89,13 @@ from .ratio import (
 )
 
 __all__ = [
+    "BOOTSTRAP_STATISTICS",
+    "BootstrapComparison",
+    "BootstrapPosterior",
+    "bayesian_bootstrap",
+    "bayesian_bootstrap_ratio",
+    "compare_bayesian_bootstrap",
+    "weighted_quantile",
     "RatioComparisonResult",
     "RatioSummary",
     "compare_ratio_metrics",

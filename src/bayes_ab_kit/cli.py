@@ -284,6 +284,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_boot.add_argument("--seed", type=int, default=20261022)
     p_boot.add_argument("--lower-is-better", action="store_true")
 
+    p_cat = sub.add_parser(
+        "categorical",
+        help="Dirichlet-multinomial comparison of categorical / ordinal outcomes (e.g. star ratings)",
+    )
+    p_cat.add_argument("--counts-a", required=True, help="comma-separated category counts for A")
+    p_cat.add_argument("--counts-b", required=True, help="comma-separated category counts for B")
+    p_cat.add_argument("--scores", default=None, help="comma-separated category scores (default 1..K)")
+    p_cat.add_argument("--prior", type=float, default=1.0, help="symmetric Dirichlet concentration (default 1)")
+    p_cat.add_argument("--lower-is-better", action="store_true")
+    p_cat.add_argument("--ci", type=float, default=0.95)
+    p_cat.add_argument("--samples", type=int, default=50_000)
+    p_cat.add_argument("--seed", type=int, default=20261025)
+
     return parser
 
 
@@ -875,6 +888,46 @@ def _cmd_bootstrap(args: argparse.Namespace) -> None:
     print(f"{'expected loss choose B':<24}: {res.expected_loss_choose_b:.6g}")
 
 
+def _parse_list(text: str, flag: str, cast=float) -> list:
+    try:
+        return [cast(v) for v in text.split(",") if v.strip() != ""]
+    except ValueError as exc:
+        raise ValueError(f"{flag} must be a comma-separated list of numbers") from exc
+
+
+def _cmd_categorical(args: argparse.Namespace) -> None:
+    from .categorical import compare_categorical
+
+    res = compare_categorical(
+        _parse_list(args.counts_a, "--counts-a", int),
+        _parse_list(args.counts_b, "--counts-b", int),
+        scores=None if args.scores is None else _parse_list(args.scores, "--scores"),
+        prior=args.prior,
+        higher_is_better=not args.lower_is_better,
+        ci=args.ci,
+        n_samples=args.samples,
+        seed=args.seed,
+    )
+    pct = f"{res.ci:.0%}"
+    print(f"Dirichlet-multinomial comparison ({len(res.scores)} categories, {args.samples} draws)")
+    print(f"{'category':>8} {'score':>7} {'n_A':>6} {'n_B':>6} {'share diff':>11} {'P(B share >)':>13}")
+    for i, sc in enumerate(res.scores):
+        print(f"{i + 1:>8} {sc:>7g} {res.counts_a[i]:>6} {res.counts_b[i]:>6} "
+              f"{res.share_diff_means[i]:>+11.4f} {res.prob_share_b_higher[i]:>13.4f}")
+    lo, hi = res.mean_score_a_interval
+    print(f"{'mean score A':<24}: {res.mean_score_a:.4f}  {pct} CrI [{lo:.4f}, {hi:.4f}]")
+    lo, hi = res.mean_score_b_interval
+    print(f"{'mean score B':<24}: {res.mean_score_b:.4f}  {pct} CrI [{lo:.4f}, {hi:.4f}]")
+    lo, hi = res.mean_diff_interval
+    print(f"{'mean diff (B - A)':<24}: {res.mean_diff:+.4f}  {pct} CrI [{lo:+.4f}, {hi:+.4f}]")
+    direction = "higher" if res.higher_is_better else "lower"
+    print(f"{'P(B better)':<24}: {res.prob_b_better:.4f}  ({direction} is better)")
+    lo, hi = res.superiority_interval
+    print(f"{'P(superiority)':<24}: {res.superiority:.4f}  {pct} CrI [{lo:.4f}, {hi:.4f}]")
+    print(f"{'expected loss choose A':<24}: {res.expected_loss_choose_a:.6g}")
+    print(f"{'expected loss choose B':<24}: {res.expected_loss_choose_b:.6g}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -894,6 +947,7 @@ def main(argv: list[str] | None = None) -> int:
         "msprt": _cmd_msprt,
         "ratio": _cmd_ratio,
         "bootstrap": _cmd_bootstrap,
+        "categorical": _cmd_categorical,
     }
     try:
         handlers[args.command](args)

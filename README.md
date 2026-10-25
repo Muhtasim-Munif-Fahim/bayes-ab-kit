@@ -379,3 +379,25 @@ res.prob_b_better, res.difference_interval, res.expected_loss_choose_b
 ```bash
 bayes-ab bootstrap --data values.csv --statistic quantile --q 0.9 --lower-is-better   # CSV: arm,value
 ```
+
+## Categorical and ordinal outcomes (Dirichlet-multinomial)
+
+Star ratings, NPS buckets and survey answers are counts over categories.
+`DirichletMultinomialPosterior` is the conjugate model (`p ~ Dirichlet(prior + counts)`)
+with closed-form posterior mean/variance of the mean score `s · p`.
+`compare_categorical` reports the mean-score difference and its credible interval,
+`P(B better)`, expected loss, per-category share differences, and the ordinal
+**probability of superiority** `P(Y_B > Y_A) + ½ P(Y_B = Y_A)` (Bayesian Vargha–Delaney A),
+which depends only on the category order.
+
+```python
+from bayes_ab_kit import compare_categorical
+
+res = compare_categorical([5, 10, 20, 40, 25], [3, 7, 18, 42, 30])  # 1..5 stars
+print(res.mean_diff, res.prob_b_better, res.superiority)
+```
+
+```bash
+bayes-ab categorical --counts-a 5,10,20,40,25 --counts-b 3,7,18,42,30
+bayes-ab categorical --counts-a 30,50,20 --counts-b 22,50,28 --scores=-1,0,1   # NPS buckets
+```

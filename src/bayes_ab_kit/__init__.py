@@ -87,8 +87,18 @@ from .ratio import (
     ratio_summary,
     ratio_summary_from_moments,
 )
+from .categorical import (
+    CategoricalComparisonResult,
+    DirichletMultinomialPosterior,
+    compare_categorical,
+    probability_of_superiority,
+)
 
 __all__ = [
+    "CategoricalComparisonResult",
+    "DirichletMultinomialPosterior",
+    "compare_categorical",
+    "probability_of_superiority",
     "BOOTSTRAP_STATISTICS",
     "BootstrapComparison",
     "BootstrapPosterior",

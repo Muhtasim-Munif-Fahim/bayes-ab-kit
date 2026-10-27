@@ -297,6 +297,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_cat.add_argument("--samples", type=int, default=50_000)
     p_cat.add_argument("--seed", type=int, default=20261025)
 
+    p_meta = sub.add_parser(
+        "meta",
+        help="Bayesian random-effects meta-analysis of experiment lifts (partial pooling, prediction)",
+    )
+    p_meta.add_argument(
+        "--experiment",
+        action="append",
+        required=True,
+        metavar="NAME:ESTIMATE:SE",
+        help="one experiment's effect estimate and standard error (repeat, >= 2)",
+    )
+    p_meta.add_argument("--tau-prior", choices=["uniform", "half-normal", "half-cauchy"], default="half-cauchy")
+    p_meta.add_argument("--tau-scale", type=float, default=None, help="prior scale for tau (default median SE)")
+    p_meta.add_argument("--threshold", type=float, default=0.0, help="report P(effect > threshold)")
+    p_meta.add_argument("--ci", type=float, default=0.95)
+
     return parser
 
 
@@ -895,6 +911,42 @@ def _parse_list(text: str, flag: str, cast=float) -> list:
         raise ValueError(f"{flag} must be a comma-separated list of numbers") from exc
 
 
+def _cmd_meta(args: argparse.Namespace) -> None:
+    from .meta import meta_analysis
+
+    names, ys, ses = [], [], []
+    for spec in args.experiment:
+        parts = spec.rsplit(":", 2)
+        if len(parts) != 3:
+            raise ValueError(f"--experiment expects NAME:ESTIMATE:SE, got {spec!r}")
+        try:
+            ys.append(float(parts[1]))
+            ses.append(float(parts[2]))
+        except ValueError as exc:
+            raise ValueError(f"--experiment {spec!r}: estimate and SE must be numbers") from exc
+        names.append(parts[0])
+    res = meta_analysis(ys, ses, names=names, tau_prior=args.tau_prior, tau_scale=args.tau_scale,
+                        ci=args.ci, threshold=args.threshold)
+    pct = f"{res.ci:.0%}"
+    thr = f"{res.threshold:g}"
+    print(f"Random-effects meta-analysis ({len(names)} experiments, tau prior: {res.tau_prior})")
+    print(f"{'experiment':<14} {'estimate':>9} {'se':>8} {'pooled':>9} {'post sd':>8} "
+          f"{pct + ' CrI':>22} {'pooling':>8} {'P(>' + thr + ')':>8}")
+    for i, name in enumerate(res.names):
+        lo, hi = res.theta_intervals[i]
+        print(f"{name:<14} {res.estimates[i]:>9.4g} {res.std_errors[i]:>8.4g} {res.theta_means[i]:>9.4g} "
+              f"{res.theta_sds[i]:>8.4g} {f'[{lo:.4g}, {hi:.4g}]':>22} {res.pooling[i]:>8.2f} "
+              f"{res.prob_theta_above[i]:>8.4f}")
+    lo, hi = res.mu_interval
+    print(f"{'overall effect mu':<26}: {res.mu_mean:.4g} (sd {res.mu_sd:.4g})  {pct} CrI [{lo:.4g}, {hi:.4g}]")
+    print(f"{'P(mu > ' + thr + ')':<26}: {res.prob_mu_above:.4f}")
+    lo, hi = res.tau_interval
+    print(f"{'heterogeneity tau':<26}: median {res.tau_median:.4g}  {pct} CrI [{lo:.4g}, {hi:.4g}]")
+    lo, hi = res.predictive_interval
+    print(f"{'new experiment effect':<26}: {res.predictive_mean:.4g}  {pct} PI [{lo:.4g}, {hi:.4g}]")
+    print(f"{'P(new effect > ' + thr + ')':<26}: {res.prob_new_above:.4f}")
+
+
 def _cmd_categorical(args: argparse.Namespace) -> None:
     from .categorical import compare_categorical
 
@@ -948,6 +1000,7 @@ def main(argv: list[str] | None = None) -> int:
         "ratio": _cmd_ratio,
         "bootstrap": _cmd_bootstrap,
         "categorical": _cmd_categorical,
+        "meta": _cmd_meta,
     }
     try:
         handlers[args.command](args)

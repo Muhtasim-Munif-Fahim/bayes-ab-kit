@@ -87,6 +87,7 @@ from .ratio import (
     ratio_summary,
     ratio_summary_from_moments,
 )
+from .meta import TAU_PRIORS, MetaAnalysisResult, meta_analysis
 from .categorical import (
     CategoricalComparisonResult,
     DirichletMultinomialPosterior,
@@ -95,6 +96,9 @@ from .categorical import (
 )
 
 __all__ = [
+    "TAU_PRIORS",
+    "MetaAnalysisResult",
+    "meta_analysis",
     "CategoricalComparisonResult",
     "DirichletMultinomialPosterior",
     "compare_categorical",

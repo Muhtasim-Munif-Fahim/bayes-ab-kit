@@ -401,3 +401,25 @@ print(res.mean_diff, res.prob_b_better, res.superiority)
 bayes-ab categorical --counts-a 5,10,20,40,25 --counts-b 3,7,18,42,30
 bayes-ab categorical --counts-a 30,50,20 --counts-b 22,50,28 --scores=-1,0,1   # NPS buckets
 ```
+
+## Meta-analysis across experiments (random effects)
+
+`meta_analysis(estimates, std_errors)` fits the normal hierarchical model `y_i ~ N(theta_i, s_i^2)`, `theta_i ~ N(mu, tau^2)` exactly by integrating the heterogeneity `tau` on a grid (BDA3 §5.4–5.5; no MCMC). It returns:
+
+- the overall effect `mu` (mean, sd, credible interval, `P(mu > threshold)`);
+- `tau` (median and interval);
+- partially pooled per-experiment effects, which correct the winner's curse, along with their pooling factors;
+- the predictive distribution of the effect in a **new** experiment.
+
+The `tau` prior can be `half-cauchy` (default), `half-normal` or `uniform`.
+
+```python
+from bayes_ab_kit import meta_analysis
+r = meta_analysis([28, 8, -3, 7, -1, 1, 18, 12], [15, 10, 16, 11, 9, 11, 10, 18], tau_prior="uniform")
+r.mu_mean, r.theta_means[0], r.predictive_interval   # ~7.9, ~11.4, wide PI
+```
+
+```bash
+bayes-ab meta --experiment us:0.012:0.004 --experiment uk:0.004:0.006 --experiment de:0.009:0.005
+```
+

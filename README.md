@@ -144,6 +144,7 @@ value), so reports are reproducible.
 | `evaluation` | Joint conversion x revenue (ARPU) comparison |
 | `ratio` | Ratio metrics (CTR, revenue per session) with delta-method variance, design effect vs naive pooling, and A/B comparison |
 | `bootstrap` | Bayesian bootstrap (Dirichlet-weighted) posteriors and A/B comparison for medians, quantiles, trimmed means, std, ratios or any weighted statistic |
+| `robust` | Robust Student-t (BEST-style) location posteriors and A/B comparison via an exact Gibbs sampler with learned degrees of freedom |
 | `msprt` | Mixture SPRT: always-valid p-values, confidence sequences, and A/A peeking simulations |
 | `sequential` | A/A peeking simulations quantifying false-stop inflation |
 | `stopping` | Bayesian stopping plans: detection rate and expected sample size |
@@ -378,6 +379,35 @@ res.prob_b_better, res.difference_interval, res.expected_loss_choose_b
 
 ```bash
 bayes-ab bootstrap --data values.csv --statistic quantile --q 0.9 --lower-is-better   # CSV: arm,value
+```
+
+## Robust means for heavy-tailed metrics (Student-t, BEST)
+
+Revenue per user, latency and session length often contain a few huge values. These can move a normal-model or bootstrap mean enough to flip a decision. `robust_posterior` fits Kruschke's BEST model `y ~ Student-t(nu, mu, sigma)` to one arm, so heavy tails absorb the outliers and `mu` stays at the bulk of the data. Inference is an **exact Gibbs sampler** that uses the normal scale-mixture form of the t distribution:
+
+* latent precisions `lam_i ~ Gamma((nu+1)/2, rate=(nu + r_i²/sigma²)/2)`;
+* a conjugate normal update for `mu` (wide prior centred on the median);
+* an inverse-gamma update for `sigma²` (Jeffreys prior);
+* `nu` drawn exactly from its full conditional on a fine grid, under BEST's `nu − 1 ~ Exp(mean 29)` prior.
+
+Pass `nu=` to fix the degrees of freedom; a very large `nu` gives back the normal model. `post.nu_median` and `post.prob_heavy_tailed` (`P(nu < 10)`) show how far the data are from normal. `nu` is only weakly identified in small samples.
+
+`compare_robust_means(a, b)` reports:
+* the `mu_B − mu_A` difference and the relative lift, with credible intervals;
+* the standardised effect size `(mu_B − mu_A) / sqrt((sigma_A² + sigma_B²)/2)`;
+* `P(B better)` and the expected loss of each choice. Use `higher_is_better=False` for latency.
+
+```python
+from bayes_ab_kit import compare_robust_means, robust_posterior
+
+post = robust_posterior(revenue_a, seed=1)
+post.mu, post.mu_interval, post.nu_median
+res = compare_robust_means(revenue_a, revenue_b, seed=7)
+res.prob_b_better, res.difference_interval, res.effect_size
+```
+
+```bash
+bayes-ab robust --data values.csv            # CSV: arm,value; add --nu 4 to fix the tails
 ```
 
 ## Categorical and ordinal outcomes (Dirichlet-multinomial)

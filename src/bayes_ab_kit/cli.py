@@ -313,6 +313,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_meta.add_argument("--threshold", type=float, default=0.0, help="report P(effect > threshold)")
     p_meta.add_argument("--ci", type=float, default=0.95)
 
+    p_robust = sub.add_parser(
+        "robust",
+        help="robust Student-t (BEST-style) comparison of means for heavy-tailed metrics",
+    )
+    p_robust.add_argument("--data", required=True, help="CSV with one row per unit: arm,value")
+    p_robust.add_argument("--control", default="A", help="control arm label (default A)")
+    p_robust.add_argument("--treatment", default=None, help="treatment arm label (default: the other arm)")
+    p_robust.add_argument("--nu", type=float, default=None, help="fix the t degrees of freedom (default: learn)")
+    p_robust.add_argument("--draws", type=int, default=4000)
+    p_robust.add_argument("--burn-in", type=int, default=1000)
+    p_robust.add_argument("--ci", type=float, default=0.95)
+    p_robust.add_argument("--seed", type=int, default=20261030)
+    p_robust.add_argument("--lower-is-better", action="store_true")
+
     return parser
 
 
@@ -904,6 +918,47 @@ def _cmd_bootstrap(args: argparse.Namespace) -> None:
     print(f"{'expected loss choose B':<24}: {res.expected_loss_choose_b:.6g}")
 
 
+def _cmd_robust(args: argparse.Namespace) -> None:
+    from .robust import compare_robust_means
+
+    arms = _read_value_csv(args.data)
+    if args.control not in arms:
+        raise ValueError(f"control arm {args.control!r} not found; arms: {sorted(arms)}")
+    others = [k for k in arms if k != args.control]
+    treatment = args.treatment
+    if treatment is None:
+        if len(others) != 1:
+            raise ValueError(f"pass --treatment; arms other than control: {sorted(others)}")
+        treatment = others[0]
+    if treatment not in arms or treatment == args.control:
+        raise ValueError(f"treatment arm {treatment!r} not found or equals control")
+    res = compare_robust_means(
+        arms[args.control], arms[treatment], nu=args.nu, n_draws=args.draws, burn_in=args.burn_in,
+        ci=args.ci, seed=args.seed, higher_is_better=not args.lower_is_better,
+    )
+    pct = f"{res.ci:.0%}"
+    rows = []
+    for label, post in ((args.control, res.a), (treatment, res.b)):
+        lo, hi = post.mu_interval
+        raw = float(sum(arms[label]) / len(arms[label]))
+        rows.append([label, str(post.n), f"{raw:.6g}", f"{post.mu:.6g}", f"[{lo:.6g}, {hi:.6g}]",
+                     f"{post.sigma:.4g}", f"{post.nu_median:.3g}"])
+    print(f"Robust Student-t comparison ({args.draws} Gibbs draws, nu {'fixed' if args.nu else 'learned'})")
+    print(markdown_table(["arm", "units", "raw mean", "robust mu", f"{pct} CrI", "scale", "nu (median)"], rows))
+    print()
+    lo, hi = res.difference_interval
+    print(f"{'difference B - A':<24}: {res.difference:+.6g}  {pct} CrI [{lo:+.6g}, {hi:+.6g}]")
+    if res.relative_lift is not None:
+        llo, lhi = res.relative_lift_interval
+        print(f"{'relative lift':<24}: {res.relative_lift:+.2%}  {pct} CrI [{llo:+.2%}, {lhi:+.2%}]")
+    elo, ehi = res.effect_size_interval
+    print(f"{'effect size':<24}: {res.effect_size:+.4f}  {pct} CrI [{elo:+.4f}, {ehi:+.4f}]")
+    direction = "higher" if res.higher_is_better else "lower"
+    print(f"{'P(B better)':<24}: {res.prob_b_better:.4f}  ({direction} is better)")
+    print(f"{'expected loss choose A':<24}: {res.expected_loss_choose_a:.6g}")
+    print(f"{'expected loss choose B':<24}: {res.expected_loss_choose_b:.6g}")
+
+
 def _parse_list(text: str, flag: str, cast=float) -> list:
     try:
         return [cast(v) for v in text.split(",") if v.strip() != ""]
@@ -1001,6 +1056,7 @@ def main(argv: list[str] | None = None) -> int:
         "bootstrap": _cmd_bootstrap,
         "categorical": _cmd_categorical,
         "meta": _cmd_meta,
+        "robust": _cmd_robust,
     }
     try:
         handlers[args.command](args)

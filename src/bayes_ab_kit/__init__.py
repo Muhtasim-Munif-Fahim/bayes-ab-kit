@@ -87,6 +87,7 @@ from .ratio import (
     ratio_summary,
     ratio_summary_from_moments,
 )
+from .robust import RobustComparison, RobustPosterior, compare_robust_means, robust_posterior
 from .meta import TAU_PRIORS, MetaAnalysisResult, meta_analysis
 from .categorical import (
     CategoricalComparisonResult,
@@ -186,4 +187,8 @@ __all__ = [
     "variant_vs_control",
     "variants_vs_control",
     "write_report",
+    "RobustComparison",
+    "RobustPosterior",
+    "compare_robust_means",
+    "robust_posterior",
 ]

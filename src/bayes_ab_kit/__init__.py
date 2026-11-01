@@ -95,8 +95,24 @@ from .categorical import (
     compare_categorical,
     probability_of_superiority,
 )
+from .survival import (
+    SurvivalArmSummary,
+    SurvivalComparisonResult,
+    WeibullPosterior,
+    compare_survival,
+    simulate_weibull_survival,
+    weibull_median,
+    weibull_rmst,
+)
 
 __all__ = [
+    "SurvivalArmSummary",
+    "SurvivalComparisonResult",
+    "WeibullPosterior",
+    "compare_survival",
+    "simulate_weibull_survival",
+    "weibull_median",
+    "weibull_rmst",
     "TAU_PRIORS",
     "MetaAnalysisResult",
     "meta_analysis",

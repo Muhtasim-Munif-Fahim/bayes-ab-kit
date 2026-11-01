@@ -327,6 +327,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_robust.add_argument("--seed", type=int, default=20261030)
     p_robust.add_argument("--lower-is-better", action="store_true")
 
+    p_surv = sub.add_parser(
+        "survival",
+        help="Weibull time-to-event comparison with right censoring (median, RMST)",
+    )
+    p_surv.add_argument("--data", required=True, help="CSV with one row per unit: arm,time,event (event 1/0)")
+    p_surv.add_argument("--control", default="A", help="control arm label (default A)")
+    p_surv.add_argument("--treatment", default=None, help="treatment arm label (default: the other arm)")
+    p_surv.add_argument("--tau", type=float, default=None, help="RMST horizon (default: min of max observed times)")
+    p_surv.add_argument(
+        "--shorter-is-better",
+        action="store_true",
+        help="a shorter time to event is better (time to convert / resolve)",
+    )
+    p_surv.add_argument("--ci", type=float, default=0.95)
+    p_surv.add_argument("--samples", type=int, default=40_000)
+    p_surv.add_argument("--seed", type=int, default=20261101)
+
     return parser
 
 
@@ -881,6 +898,71 @@ def _read_value_csv(path: str) -> dict[str, list[float]]:
     return arms
 
 
+def _read_survival_csv(path: str) -> dict[str, tuple[list[float], list[int]]]:
+    try:
+        with open(path, newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            missing = {"arm", "time", "event"} - set(reader.fieldnames or [])
+            if missing:
+                raise ValueError(f"{path} is missing column(s): {', '.join(sorted(missing))}")
+            arms: dict[str, tuple[list[float], list[int]]] = {}
+            for line, row in enumerate(reader, start=2):
+                try:
+                    t = float(row["time"])
+                    e = int(float(row["event"]))
+                except (TypeError, ValueError):
+                    raise ValueError(f"{path} line {line}: time and event must be numbers") from None
+                times, events = arms.setdefault(row["arm"], ([], []))
+                times.append(t)
+                events.append(e)
+    except OSError as exc:
+        raise ValueError(f"could not read {path}: {exc}") from None
+    return arms
+
+
+def _cmd_survival(args: argparse.Namespace) -> None:
+    from .survival import compare_survival
+
+    arms = _read_survival_csv(args.data)
+    if args.control not in arms:
+        raise ValueError(f"control arm {args.control!r} not found; arms: {sorted(arms)}")
+    others = [k for k in arms if k != args.control]
+    treatment = args.treatment
+    if treatment is None:
+        if len(others) != 1:
+            raise ValueError(f"pass --treatment; arms other than control: {sorted(others)}")
+        treatment = others[0]
+    if treatment not in arms or treatment == args.control:
+        raise ValueError(f"treatment arm {treatment!r} not found or equals control")
+    ta, ea = arms[args.control]
+    tb, eb = arms[treatment]
+    res = compare_survival(
+        ta, ea, tb, eb, tau=args.tau, longer_is_better=not args.shorter_is_better,
+        ci=args.ci, n_samples=args.samples, seed=args.seed,
+    )
+    pct = f"{res.ci:.0%}"
+    rows = []
+    for label, arm in ((args.control, res.a), (treatment, res.b)):
+        rows.append([
+            label, str(arm.n), str(arm.n_events), f"{arm.shape_mean:.3g}",
+            f"{arm.median_mean:.4g} [{arm.median_interval[0]:.4g}, {arm.median_interval[1]:.4g}]",
+            f"{arm.rmst_mean:.4g} [{arm.rmst_interval[0]:.4g}, {arm.rmst_interval[1]:.4g}]",
+        ])
+    print(f"Weibull time-to-event comparison (RMST horizon tau = {res.tau:g})")
+    print(markdown_table(
+        ["arm", "units", "events", "shape k", f"median ({pct} CrI)", f"RMST ({pct} CrI)"], rows
+    ))
+    print()
+    lo, hi = res.rmst_difference_interval
+    print(f"{'RMST difference B - A':<24}: {res.rmst_difference:+.4g}  {pct} CrI [{lo:+.4g}, {hi:+.4g}]")
+    rlo, rhi = res.median_ratio_interval
+    print(f"{'median ratio B / A':<24}: {res.median_ratio:.4f}  {pct} CrI [{rlo:.4f}, {rhi:.4f}]")
+    direction = "longer" if res.longer_is_better else "shorter"
+    print(f"{'P(B better)':<24}: {res.prob_b_better:.4f}  ({direction} time is better, by RMST)")
+    print(f"{'expected loss choose A':<24}: {res.expected_loss_choose_a:.6g}")
+    print(f"{'expected loss choose B':<24}: {res.expected_loss_choose_b:.6g}")
+
+
 def _cmd_bootstrap(args: argparse.Namespace) -> None:
     from .bootstrap import compare_bayesian_bootstrap
 
@@ -1057,6 +1139,7 @@ def main(argv: list[str] | None = None) -> int:
         "categorical": _cmd_categorical,
         "meta": _cmd_meta,
         "robust": _cmd_robust,
+        "survival": _cmd_survival,
     }
     try:
         handlers[args.command](args)

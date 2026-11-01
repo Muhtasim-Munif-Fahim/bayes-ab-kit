@@ -145,6 +145,7 @@ value), so reports are reproducible.
 | `ratio` | Ratio metrics (CTR, revenue per session) with delta-method variance, design effect vs naive pooling, and A/B comparison |
 | `bootstrap` | Bayesian bootstrap (Dirichlet-weighted) posteriors and A/B comparison for medians, quantiles, trimmed means, std, ratios or any weighted statistic |
 | `robust` | Robust Student-t (BEST-style) location posteriors and A/B comparison via an exact Gibbs sampler with learned degrees of freedom |
+| `survival` | Weibull time-to-event posteriors with right censoring (exact shape grid, conjugate scale), median and RMST comparisons |
 | `msprt` | Mixture SPRT: always-valid p-values, confidence sequences, and A/A peeking simulations |
 | `sequential` | A/A peeking simulations quantifying false-stop inflation |
 | `stopping` | Bayesian stopping plans: detection rate and expected sample size |
@@ -408,6 +409,31 @@ res.prob_b_better, res.difference_interval, res.effect_size
 
 ```bash
 bayes-ab robust --data values.csv            # CSV: arm,value; add --nu 4 to fix the tails
+```
+
+## Time-to-event outcomes with censoring (Weibull)
+
+Durations such as time to first purchase, time to churn or time to resolve a ticket are *right-censored*: units that have not had the event when the test ends only give a lower bound. `WeibullPosterior` fits `S(t) = exp(-lam t^k)` to `(times, events)` (`event = 0` marks a censored unit). For a fixed shape `k` the scale `lam` is conjugate (`Gamma(a0 + D, b0 + Σ t_i^k)`), so `lam` is integrated out in closed form and the posterior over `k` is **exact on a log-spaced grid**. No MCMC is involved. `k = 1` is the exponential model; `k > 1` means a rising hazard and `k < 1` a falling one.
+
+`compare_survival(times_a, events_a, times_b, events_b)` reports for each arm:
+* the posterior of the shape, the median time to event and the **restricted mean survival time** `RMST(tau) = ∫_0^tau S(t) dt` (closed form via the incomplete gamma function);
+* the RMST difference and the median ratio, with credible intervals;
+* `P(B better)` and the expected loss in RMST units.
+
+`tau` defaults to the smaller of the two arms' largest observed times. RMST does not need proportional hazards, so it stays valid when the survival curves cross. Pass `longer_is_better=False` when a shorter duration is the goal.
+
+```python
+from bayes_ab_kit import WeibullPosterior, compare_survival, simulate_weibull_survival
+
+ta, ea = simulate_weibull_survival(800, shape=1.5, scale=10, censor_time=15, seed=1)
+tb, eb = simulate_weibull_survival(800, shape=1.5, scale=12, censor_time=15, seed=2)
+WeibullPosterior(ta, ea).shape_interval()
+res = compare_survival(ta, ea, tb, eb)
+res.prob_b_better, res.rmst_difference_interval, res.median_ratio
+```
+
+```bash
+bayes-ab survival --data durations.csv       # CSV: arm,time,event; --shorter-is-better for time-to-convert
 ```
 
 ## Categorical and ordinal outcomes (Dirichlet-multinomial)

@@ -88,6 +88,14 @@ from .ratio import (
     ratio_summary_from_moments,
 )
 from .robust import RobustComparison, RobustPosterior, compare_robust_means, robust_posterior
+from .multiplicity import (
+    BayesianFdrResult,
+    MetricScreenResult,
+    bayesian_fdr_select,
+    lfsr_from_draws,
+    lfsr_normal,
+    screen_metrics,
+)
 from .meta import TAU_PRIORS, MetaAnalysisResult, meta_analysis
 from .categorical import (
     CategoricalComparisonResult,
@@ -106,6 +114,12 @@ from .survival import (
 )
 
 __all__ = [
+    "BayesianFdrResult",
+    "MetricScreenResult",
+    "bayesian_fdr_select",
+    "lfsr_from_draws",
+    "lfsr_normal",
+    "screen_metrics",
     "SurvivalArmSummary",
     "SurvivalComparisonResult",
     "WeibullPosterior",

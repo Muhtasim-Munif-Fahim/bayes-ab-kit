@@ -479,3 +479,20 @@ r.mu_mean, r.theta_means[0], r.predictive_interval   # ~7.9, ~11.4, wide PI
 bayes-ab meta --experiment us:0.012:0.004 --experiment uk:0.004:0.006 --experiment de:0.009:0.005
 ```
 
+## Many metrics at once: lfsr and Bayesian FDR
+
+Dashboards with dozens of metrics or segments always show some chance "wins". `screen_metrics(estimates, std_errors, names, q=0.05)` fits an empirical-Bayes prior `theta_j ~ N(0, tau^2)` by marginal maximum likelihood, shrinks every lift toward zero, and computes the **local false sign rate** (Stephens 2017), `lfsr_j = min(P(theta_j >= 0), P(theta_j <= 0))`. It then declares the largest set of metrics whose *average* lfsr is `<= q` (Newton et al. 2004 / Müller et al. 2004 Bayesian FDR rule), so the posterior expected share of wrong-sign calls among the winners is at most `q`.
+
+```python
+from bayes_ab_kit import screen_metrics, lfsr_from_draws, bayesian_fdr_select
+
+r = screen_metrics([0.05, 0.002, -0.004, 0.001, -0.06], [0.01] * 5,
+                   names=["ctr", "aov", "bounce", "ttfb", "churn"], q=0.05)
+r.selected_names          # ('ctr', 'churn')
+r.table()                 # posterior means, lfsr and q-values per metric
+
+# Or bring your own posterior draws (n_draws, n_metrics):
+sel = bayesian_fdr_select(lfsr_from_draws(draws), q=0.1)
+```
+
+Pass `tau=float("inf")` to skip shrinkage (lfsr becomes the one-sided p-value).

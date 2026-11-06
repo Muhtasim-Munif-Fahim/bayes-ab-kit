@@ -16,6 +16,14 @@ from .evaluation import ArpuEvaluation, VariantData, evaluate_variants
 from .hierarchical import HierarchicalBetaResult, ShrunkArm, hierarchical_beta_shrinkage
 from .multiarms import ArmBestShare, MultiArmBestResult, probability_of_being_best
 from .posteriors import BetaBinomialPosterior
+
+from .prior_sensitivity import (
+    PriorSensitivityPoint,
+    TippingPointResult,
+    prior_mean_sweep,
+    symmetric_prior_curve,
+    tipping_point_strength,
+)
 from .power import SampleSizePlan, required_sample_size
 from .reporting import ConversionReport, render_conversion_report, write_report
 from .risk import RiskResult, expected_loss, risk_decision

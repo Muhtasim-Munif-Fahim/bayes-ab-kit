@@ -215,6 +215,20 @@ python -m pytest tests -q
   meant for planning intuition, not as a replacement for group-sequential
   designs.
 
+
+## Prior tipping-point sensitivity
+
+Ask how strong a sceptical ``Beta(s, s)`` prior must be before a "ship B" call
+(`P(B > A) >= threshold`) flips:
+
+```python
+from bayes_ab_kit import tipping_point_strength, prior_mean_sweep, symmetric_prior_curve
+
+res = tipping_point_strength(50, 1000, 80, 1000, threshold=0.95)
+res.baseline_prob, res.tipping_strength
+prior_mean_sweep(50, 1000, 80, 1000, strength=10.0)
+```
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

@@ -510,3 +510,22 @@ sel = bayesian_fdr_select(lfsr_from_draws(draws), q=0.1)
 ```
 
 Pass `tau=float("inf")` to skip shrinkage (lfsr becomes the one-sided p-value).
+
+## Is more data worth it? EVPI, EVSI and optimal extra sample size
+
+Decision-theoretic stopping for conversion tests: `evpi` is the most any further
+data could improve the shipped conversion rate (it equals the expected loss of
+the current leader), `evsi` is the preposterior value of `n` more visitors per
+arm, and `optimal_additional_sample` trades that value — applied to the
+`horizon` future visitors — against a per-visitor sampling cost (ENBS).
+
+```python
+from bayes_ab_kit import BetaBinomialPosterior, evpi, evsi, optimal_additional_sample
+
+a = BetaBinomialPosterior.from_counts(48, 1000)
+b = BetaBinomialPosterior.from_counts(55, 1000)
+evpi([a, b])                 # ~0.002 conversion-rate units
+evsi([a, b], n_per_arm=2000) # value of 2k more visitors per arm
+plan = optimal_additional_sample([a, b], horizon=1_000_000, cost_per_visitor=0.001)
+plan.best_n_per_arm, plan.best_enbs, plan.keep_running
+```

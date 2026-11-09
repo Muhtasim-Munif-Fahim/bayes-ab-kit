@@ -120,8 +120,20 @@ from .survival import (
     weibull_median,
     weibull_rmst,
 )
+from .value_of_information import (
+    SampleSizeValue,
+    ValueOfInformationResult,
+    evpi,
+    evsi,
+    optimal_additional_sample,
+)
 
 __all__ = [
+    "SampleSizeValue",
+    "ValueOfInformationResult",
+    "evpi",
+    "evsi",
+    "optimal_additional_sample",
     "BayesianFdrResult",
     "MetricScreenResult",
     "bayesian_fdr_select",

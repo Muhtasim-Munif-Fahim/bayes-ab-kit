@@ -120,6 +120,13 @@ from .survival import (
     weibull_median,
     weibull_rmst,
 )
+from .power_prior import (
+    HistoricalControlComparison,
+    PowerPriorResult,
+    compare_with_historical_control,
+    normalized_power_prior,
+    power_prior_posterior,
+)
 from .value_of_information import (
     SampleSizeValue,
     ValueOfInformationResult,
@@ -129,6 +136,11 @@ from .value_of_information import (
 )
 
 __all__ = [
+    "HistoricalControlComparison",
+    "PowerPriorResult",
+    "compare_with_historical_control",
+    "normalized_power_prior",
+    "power_prior_posterior",
     "SampleSizeValue",
     "ValueOfInformationResult",
     "evpi",

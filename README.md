@@ -529,3 +529,23 @@ evsi([a, b], n_per_arm=2000) # value of 2k more visitors per arm
 plan = optimal_additional_sample([a, b], horizon=1_000_000, cost_per_visitor=0.001)
 plan.best_n_per_arm, plan.best_enbs, plan.keep_running
 ```
+
+## Borrowing historical control data: (normalized) power priors
+
+Reuse a previous experiment's control traffic without letting a stale baseline
+dominate. `power_prior_posterior` discounts the historical likelihood by a fixed
+power `a0` (0 = ignore, 1 = pool). `normalized_power_prior` puts a `Beta(c, d)`
+prior on `a0` (Duan, Ye & Smith 2006) so the data decide how much to borrow:
+history that agrees with the current control is borrowed heavily, conflicting
+history is discounted automatically. The empirical-Bayes `a0_hat` (Gravestock &
+Held 2017) and the effective borrowed sample size `E[a0] * n0` are reported.
+
+```python
+from bayes_ab_kit import compare_with_historical_control, normalized_power_prior
+
+ctrl = normalized_power_prior(48, 1000, hist_conversions=240, hist_trials=5000)
+ctrl.a0_mean, ctrl.a0_eb, ctrl.borrowed_sample_size, ctrl.credible_interval()
+
+out = compare_with_historical_control(48, 1000, 62, 1000, hist_conversions=240, hist_trials=5000)
+out.prob_treatment_better, out.lift_interval, out.prob_treatment_better_no_borrowing
+```
